@@ -29,7 +29,8 @@ AC_PROG_CC
 
 AC_HEADER_STDC
 
-PKG_CHECK_MODULES(TBM_BACKEND_ANDROID, libtbm android-headers)
+# android-hw-libs is temporary unless we have the hybris and have to use the android tool-chain
+PKG_CHECK_MODULES(TBM_BACKEND_ANDROID, libtbm android-headers android-hw-libs)
 
 # set the dir for the tbm module
 DEFAULT_TBM_MODULE_PATH="${libdir}/bufmgr"
