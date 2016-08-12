@@ -99,13 +99,22 @@ char *target_name()
 	} \
 }
 
+#define ANDROID_RETURN_VAL_IF_FAIL(cond, val) {\
+	if (!(cond)) {\
+		TBM_ANDROID_LOG("[%s] : '%s' failed.\n", __func__, #cond);\
+		return val;\
+	} \
+}
+
 typedef struct _tbm_bufmgr_android *tbm_bufmgr_android;
 typedef struct _tbm_bo_android *tbm_bo_android;
 
 
 /* tbm buffer object for android */
 struct _tbm_bo_android {
-	void *private;
+	buffer_handle_t handler;
+	int width;
+	int height;
 };
 
 /* tbm bufmgr private for android */
@@ -114,6 +123,100 @@ struct _tbm_bufmgr_android {
 	alloc_device_t *alloc_dev;
 };
 
+
+/* At this stage, we use formats that have a full match with Android formats.
+ * In the future, need to increase the number of matching formats.*/
+static int
+_get_android_format_from_tbm(unsigned int ftbm)
+{
+	int format = 0;
+
+	switch (ftbm) {
+	case TBM_FORMAT_RGBA8888:
+		format = HAL_PIXEL_FORMAT_RGBA_8888;
+		break;
+	case TBM_FORMAT_RGBX8888:
+		format = HAL_PIXEL_FORMAT_RGBX_8888;
+		break;
+	case TBM_FORMAT_RGB888:
+		format = HAL_PIXEL_FORMAT_RGB_888;
+		break;
+	case TBM_FORMAT_RGB565:
+		format = HAL_PIXEL_FORMAT_RGB_565;
+		break;
+	case TBM_FORMAT_BGRA8888:
+		format = HAL_PIXEL_FORMAT_BGRA_8888;
+		break;
+	case TBM_FORMAT_RGBA4444:
+		format = HAL_PIXEL_FORMAT_RGBA_4444;
+		break;
+	}
+
+	return format;
+}
+
+/* For the TBM_BO_SCANOUT flag we use the additional flag
+ * GRALLOC_USAGE_HW_COMPOSER, because the buffer will be used by the
+ * Hardware Composer.*/
+static int
+_get_android_usage_from_tbm(unsigned int flags)
+{
+	int usage = 0;
+
+	if (flags & TBM_BO_DEFAULT)
+		usage |= GRALLOC_USAGE_SW_WRITE_OFTEN;
+	else if (flags & TBM_BO_SCANOUT)
+		usage |= GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN;
+
+	return usage;
+}
+
+void *
+tbm_android_surface_bo_alloc(tbm_bo bo, int width, int height, int format,
+							 int flags, int bo_idx)
+{
+	ANDROID_RETURN_VAL_IF_FAIL(bo != NULL, 0);
+
+	int ret;
+	tbm_bo_android bo_android;
+	tbm_bufmgr_android bufmgr_android;
+	int usage_android, format_android;
+	alloc_device_t *alloc_dev;
+	buffer_handle_t handler;
+	int stride;
+
+	bufmgr_android = (tbm_bufmgr_android) tbm_backend_get_bufmgr_priv(bo);
+	ANDROID_RETURN_VAL_IF_FAIL(bufmgr_android != NULL, 0);
+
+	alloc_dev = bufmgr_android->alloc_dev;
+	ANDROID_RETURN_VAL_IF_FAIL(alloc_dev != NULL, 0);
+
+	bo_android = calloc(1, sizeof(struct _tbm_bo_android));
+	if (!bo_android) {
+		TBM_ANDROID_LOG("error: Fail to allocate the bo private\n");
+		return 0;
+	}
+
+	usage_android = _get_android_usage_from_tbm(flags);
+
+	format_android = _get_android_format_from_tbm(format);
+
+	ret = alloc_dev->alloc(alloc_dev, width, height, format_android,
+						   usage_android, &handler, &stride);
+	if (ret) {
+		TBM_ANDROID_LOG
+			("error: Cannot allocate a buffer(%dx%d) in graphic memory\n",
+			 width, height);
+		free(bo_android);
+		return 0;
+	}
+
+	bo_android->handler = handler;
+	bo_android->width = width;
+	bo_android->height = height;
+
+	return (void *)bo_android;
+}
 
 static int
 tbm_android_bo_size(tbm_bo bo)
@@ -130,6 +233,22 @@ tbm_android_bo_alloc(tbm_bo bo, int size, int flags)
 static void
 tbm_android_bo_free(tbm_bo bo)
 {
+	tbm_bo_android bo_android;
+	tbm_bufmgr_android bufmgr_android;
+
+	if (!bo)
+		return;
+
+	bufmgr_android = (tbm_bufmgr_android) tbm_backend_get_bufmgr_priv(bo);
+	ANDROID_RETURN_IF_FAIL(bufmgr_android != NULL);
+
+	bo_android = (tbm_bo_android) tbm_backend_get_bo_priv(bo);
+	ANDROID_RETURN_IF_FAIL(bo_android != NULL);
+
+	bufmgr_android->alloc_dev->free(bufmgr_android->alloc_dev,
+									bo_android->handler);
+
+	free(bo_android);
 }
 
 
@@ -311,6 +430,10 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	bufmgr_backend->bo_get_flags = tbm_android_bo_get_flags;
 	bufmgr_backend->bo_lock = tbm_android_bo_lock;
 	bufmgr_backend->bo_unlock = tbm_android_bo_unlock;
+	/* we don't implement bo_alloc due to restriction of underlying
+	 * functionality (gralloc). Gralloc not allow to allocate bo is not
+	 * knowing the height and width of the buffer.*/
+	bufmgr_backend->surface_bo_alloc = tbm_android_surface_bo_alloc;
 
 /*	if (tbm_backend_is_display_server() && !_check_render_node()) {
 		bufmgr_backend->bufmgr_bind_native_display = tbm_android_bufmgr_bind_native_display;
