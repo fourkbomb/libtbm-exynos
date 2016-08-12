@@ -49,10 +49,55 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <pthread.h>
 #include <tbm_surface.h>
 #include <tbm_surface_internal.h>
+#include <dlog/dlog.h>
 
+#include <hardware/hardware.h>
 #include <hardware/gralloc.h>
 
-#define TBM_ANDROID_LOG(...)
+char *target_name()
+{
+	FILE *f;
+	char *slash;
+	static int initialized = 0;
+	static char app_name[128];
+
+	if (initialized)
+		return app_name;
+
+	/* get the application name */
+	f = fopen("/proc/self/cmdline", "r");
+
+	if (!f)
+		return 0;
+
+	memset(app_name, 0x00, sizeof(app_name));
+
+	if (fgets(app_name, 100, f) == NULL) {
+		fclose(f);
+		return 0;
+	}
+
+	fclose(f);
+
+	slash = strrchr(app_name, '/');
+	if (slash != NULL)
+		memmove(app_name, slash + 1, strlen(slash));
+
+	initialized = 1;
+
+	return app_name;
+}
+
+#define TBM_ANDROID_LOG(fmt, args...) LOGE("\033[31m"  "[%s]" fmt "\033[0m",\
+										   target_name(), ##args)
+
+/* check condition */
+#define ANDROID_RETURN_IF_FAIL(cond) {\
+	if (!(cond)) {\
+		TBM_ANDROID_LOG("[%s] : '%s' failed.\n", __func__, #cond);\
+		return;\
+	} \
+}
 
 typedef struct _tbm_bufmgr_android *tbm_bufmgr_android;
 typedef struct _tbm_bo_android *tbm_bo_android;
@@ -65,7 +110,8 @@ struct _tbm_bo_android {
 
 /* tbm bufmgr private for android */
 struct _tbm_bufmgr_android {
-	void *private;
+	gralloc_module_t *gralloc_module;
+	alloc_device_t *alloc_dev;
 };
 
 
@@ -144,6 +190,15 @@ tbm_android_bo_unlock(tbm_bo bo)
 static void
 tbm_android_bufmgr_deinit(void *priv)
 {
+	ANDROID_RETURN_IF_FAIL(priv != NULL);
+
+	tbm_bufmgr_android bufmgr_android;
+
+	bufmgr_android = (tbm_bufmgr_android) priv;
+
+	gralloc_close(bufmgr_android->alloc_dev);
+
+	free(bufmgr_android);
 }
 
 int
@@ -179,7 +234,7 @@ tbm_android_bo_get_flags(tbm_bo bo)
 }
 
 int
-tbm_android_bufmgr_bind_native_display (tbm_bufmgr bufmgr, void *native_display)
+tbm_android_bufmgr_bind_native_display(tbm_bufmgr bufmgr, void *native_display)
 {
 	return 1;
 }
@@ -192,11 +247,12 @@ static TBMModuleVersionInfo AndroidVersRec = {
 	TBM_ABI_VERSION,
 };
 
-TBMModuleData tbmModuleData = { &AndroidVersRec, init_tbm_bufmgr_priv};
+TBMModuleData tbmModuleData = { &AndroidVersRec, init_tbm_bufmgr_priv };
 
 int
 init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 {
+	int ret;
 	tbm_bufmgr_android bufmgr_android;
 	tbm_bufmgr_backend bufmgr_backend;
 
@@ -209,9 +265,29 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 		return 0;
 	}
 
+	ret =
+		hw_get_module(GRALLOC_HARDWARE_MODULE_ID,
+					  (const hw_module_t **)&bufmgr_android->gralloc_module);
+	if (ret || !bufmgr_android->gralloc_module) {
+		TBM_ANDROID_LOG("error: Cannot get gralloc hardware module!\n");
+		free(bufmgr_android);
+		return 0;
+	}
+
+	ret =
+		gralloc_open((const hw_module_t *)&bufmgr_android->gralloc_module,
+					 &bufmgr_android->alloc_dev);
+	if (ret || !&bufmgr_android->alloc_dev) {
+		printf("error: Cannot open the gralloc\n");
+		free(bufmgr_android);
+		return 0;
+	}
+
 	bufmgr_backend = tbm_backend_alloc();
 	if (!bufmgr_backend) {
 		TBM_ANDROID_LOG("error: Fail to create android backend!\n");
+
+		gralloc_close(bufmgr_android->alloc_dev);
 
 		free(bufmgr_android);
 		return 0;
@@ -230,7 +306,8 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	bufmgr_backend->bo_map = tbm_android_bo_map;
 	bufmgr_backend->bo_unmap = tbm_android_bo_unmap;
 	bufmgr_backend->surface_get_plane_data = tbm_android_surface_get_plane_data;
-	bufmgr_backend->surface_supported_format = tbm_android_surface_supported_format;
+	bufmgr_backend->surface_supported_format =
+										tbm_android_surface_supported_format;
 	bufmgr_backend->bo_get_flags = tbm_android_bo_get_flags;
 	bufmgr_backend->bo_lock = tbm_android_bo_lock;
 	bufmgr_backend->bo_unlock = tbm_android_bo_unlock;
@@ -242,6 +319,8 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	if (!tbm_backend_init(bufmgr, bufmgr_backend)) {
 		TBM_ANDROID_LOG("error: Fail to init backend!\n");
 		tbm_backend_free(bufmgr_backend);
+
+		gralloc_close(bufmgr_android->alloc_dev);
 
 		free(bufmgr_android);
 		return 0;
