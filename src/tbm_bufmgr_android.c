@@ -115,6 +115,8 @@ struct _tbm_bo_android {
 	buffer_handle_t handler;
 	int width;
 	int height;
+	void *pBase;          /* virtual address */
+	unsigned int map_cnt;
 };
 
 /* tbm bufmgr private for android */
@@ -123,6 +125,51 @@ struct _tbm_bufmgr_android {
 	alloc_device_t *alloc_dev;
 };
 
+static tbm_bo_handle
+_android_bo_handle(tbm_bufmgr_android bufmgr_android, tbm_bo_android bo_android,
+				   int device)
+{
+	int ret, usage;
+	tbm_bo_handle bo_handle;
+	gralloc_module_t *gralloc_module;
+
+	gralloc_module = bufmgr_android->gralloc_module;
+	ANDROID_RETURN_VAL_IF_FAIL(gralloc_module != NULL, (tbm_bo_handle) NULL);
+
+	memset(&bo_handle, 0x0, sizeof(tbm_bo_handle));
+
+	switch (device) {
+	case TBM_DEVICE_DEFAULT:
+	case TBM_DEVICE_CPU:
+		if (!bo_android->pBase) {
+			void *map = NULL;
+
+			usage = GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_OFTEN;
+
+			ret = gralloc_module->lock((gralloc_module_t const *) gralloc_module,
+					bo_android->handler, usage, 0, 0, bo_android->width,
+					bo_android->height, &map);
+			if (ret || !map) {
+				TBM_ANDROID_LOG("error(%s:%d): Cannot lock buffer\n",
+								__func__, __LINE__);
+				return (tbm_bo_handle) NULL;
+			}
+
+			bo_android->pBase = map;
+		}
+		bo_handle.ptr = bo_android->pBase;
+		break;
+	case TBM_DEVICE_2D:
+	case TBM_DEVICE_3D:
+	case TBM_DEVICE_MM:
+	default:
+		TBM_ANDROID_LOG("error: Not supported device:%d\n", device);
+		bo_handle.ptr = NULL;
+		break;
+	}
+
+	return bo_handle;
+}
 
 /* At this stage, we use formats that have a full match with Android formats.
  * In the future, need to increase the number of matching formats.*/
@@ -279,18 +326,95 @@ tbm_android_bo_export_fd(tbm_bo bo)
 static tbm_bo_handle
 tbm_android_bo_get_handle(tbm_bo bo, int device)
 {
-	return (tbm_bo_handle)25;
+	ANDROID_RETURN_VAL_IF_FAIL(bo != NULL, (tbm_bo_handle) NULL);
+
+	tbm_bo_handle bo_handle;
+	tbm_bo_android bo_android;
+	tbm_bufmgr_android bufmgr_android;
+
+	bufmgr_android = (tbm_bufmgr_android) tbm_backend_get_bufmgr_priv(bo);
+	ANDROID_RETURN_VAL_IF_FAIL(bufmgr_android != NULL, (tbm_bo_handle) NULL);
+
+	bo_android = (tbm_bo_android)tbm_backend_get_bo_priv(bo);
+	ANDROID_RETURN_VAL_IF_FAIL(bo_android != NULL, (tbm_bo_handle) NULL);
+
+	/*Get mapped bo_handle*/
+	bo_handle = _android_bo_handle(bufmgr_android, bo_android, device);
+	if (bo_handle.ptr == NULL) {
+		TBM_ANDROID_LOG("error: Cannot get handle: device:%d\n", device);
+		return (tbm_bo_handle) NULL;
+	}
+
+	return bo_handle;
 }
 
 static tbm_bo_handle
 tbm_android_bo_map(tbm_bo bo, int device, int opt)
 {
-	return (tbm_bo_handle)25;
+	ANDROID_RETURN_VAL_IF_FAIL(bo != NULL, (tbm_bo_handle) NULL);
+
+	tbm_bo_handle bo_handle;
+	tbm_bo_android bo_android;
+	tbm_bufmgr_android bufmgr_android;
+
+	bufmgr_android = (tbm_bufmgr_android) tbm_backend_get_bufmgr_priv(bo);
+	ANDROID_RETURN_VAL_IF_FAIL(bufmgr_android != NULL, (tbm_bo_handle) NULL);
+
+	bo_android = (tbm_bo_android)tbm_backend_get_bo_priv(bo);
+	ANDROID_RETURN_VAL_IF_FAIL(bo_android != NULL, (tbm_bo_handle) NULL);
+
+	/*Get mapped bo_handle*/
+	bo_handle = _android_bo_handle(bufmgr_android, bo_android, device);
+	if (bo_handle.ptr == NULL) {
+		TBM_ANDROID_LOG("error: Cannot get handle: device:%d\n", device);
+		return (tbm_bo_handle) NULL;
+	}
+
+	bo_android->map_cnt++;
+
+	return bo_handle;
 }
 
 static int
 tbm_android_bo_unmap(tbm_bo bo)
 {
+	ANDROID_RETURN_VAL_IF_FAIL(bo != NULL, 0);
+
+	int ret;
+	tbm_bo_android bo_android;
+	tbm_bufmgr_android bufmgr_android;
+	gralloc_module_t *gralloc_module;
+
+	bufmgr_android = (tbm_bufmgr_android)tbm_backend_get_bufmgr_priv(bo);
+	ANDROID_RETURN_VAL_IF_FAIL(bufmgr_android != NULL, 0);
+
+	gralloc_module = bufmgr_android->gralloc_module;
+	ANDROID_RETURN_VAL_IF_FAIL(gralloc_module != NULL, 0);
+
+	bo_android = (tbm_bo_android)tbm_backend_get_bo_priv(bo);
+	ANDROID_RETURN_VAL_IF_FAIL(bo_android != NULL, 0);
+
+	if (!bo_android->map_cnt) {
+		TBM_ANDROID_LOG("error(%s:%d): The buffer is not mapped\n",
+												__func__, __LINE__);
+		return 0;
+	}
+
+	bo_android->map_cnt--;
+
+	if (bo_android->map_cnt)
+		return 1;
+
+	ret = gralloc_module->unlock((gralloc_module_t const*) gralloc_module,
+								  bo_android->handler);
+	if (ret) {
+		TBM_ANDROID_LOG("error(%s:%d): Cannot unlock buffer\n",
+										__func__, __LINE__);
+		return 0;
+	}
+
+	bo_android->pBase = NULL;
+
 	return 1;
 }
 
