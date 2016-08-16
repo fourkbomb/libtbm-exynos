@@ -518,7 +518,7 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	}
 
 	ret =
-		gralloc_open((const hw_module_t *)&bufmgr_android->gralloc_module,
+		gralloc_open((const hw_module_t *)bufmgr_android->gralloc_module,
 					 &bufmgr_android->alloc_dev);
 	if (ret || !&bufmgr_android->alloc_dev) {
 		printf("error: Cannot open the gralloc\n");

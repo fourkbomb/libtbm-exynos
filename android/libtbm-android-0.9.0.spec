@@ -28,7 +28,7 @@ make %{?_smp_mflags}
 rm -rf %{buildroot}
 
 %make_install
-cd %{buildroot}/usr/local/lib/bufmgr/ && ln -s libtbm-android.so libtbm-default.so
+cd %{buildroot}/usr/local/lib/bufmgr/ && ln -s libtbm_android.so libtbm_default.so
 
 %clean
 rm -rf %{buildroot}
