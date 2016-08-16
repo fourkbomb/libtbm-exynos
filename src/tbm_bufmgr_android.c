@@ -210,9 +210,13 @@ _get_android_usage_from_tbm(unsigned int flags)
 {
 	int usage = 0;
 
-	if (flags & TBM_BO_DEFAULT)
-		usage |= GRALLOC_USAGE_SW_WRITE_OFTEN;
-	else if (flags & TBM_BO_SCANOUT)
+	/* TODO: while TBM_BO_DEFAULT equals 0(zero) it's useles to use logical operations
+	 * I'm a little bit confused..., maybe TBM_BO_DEFAULT must be 1 << 0 ?
+	 * So, at least now, we'll use equeal operator instead logical OR operator
+	 * I think we must allow a read operation for the default bo. */
+	if (flags == TBM_BO_DEFAULT)
+		usage |= GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_OFTEN;
+	else if (flags == TBM_BO_SCANOUT)
 		usage |= GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN;
 
 	return usage;
