@@ -102,7 +102,7 @@ char *target_name()
 }
 
 #define TBM_EXYNOS_LOG(fmt, args...) LOGE("\033[31m"  "[%s]" fmt "\033[0m", target_name(), ##args)
-#define DBG(fmt, args...)  {if (bDebug&01) LOGE(fmt, ##args);}
+#define DBG(fmt, args...)  {if (bDebug&01) LOGE(fmt, ##args); }
 #else
 #define TBM_EXYNOS_LOG(...)
 #define DBG(...)
@@ -192,9 +192,9 @@ typedef union _tbm_bo_cache_state tbm_bo_cache_state;
 union _tbm_bo_cache_state {
 	unsigned int val;
 	struct {
-		unsigned int cntFlush: 16;	/*Flush all index for sync */
-		unsigned int isCached: 1;
-		unsigned int isDirtied: 2;
+		unsigned int cntFlush:16;	/*Flush all index for sync */
+		unsigned int isCached:1;
+		unsigned int isDirtied:2;
 	} data;
 };
 
@@ -592,7 +592,7 @@ _tbm_exynos_open_drm()
 
 	fd = drmOpen(EXYNOS_DRM_NAME, NULL);
 	if (fd < 0) {
-		TBM_EXYNOS_LOG ("[libtbm-exynos:%d] "
+		TBM_EXYNOS_LOG("[libtbm-exynos:%d] "
 			      "warning %s:%d fail to open drm\n",
 			      getpid(), __FUNCTION__, __LINE__);
 	}
@@ -606,7 +606,7 @@ _tbm_exynos_open_drm()
 		struct stat s;
 		int ret;
 
-		TBM_EXYNOS_LOG ("[libtbm-exynos:%d] "
+		TBM_EXYNOS_LOG("[libtbm-exynos:%d] "
 			      "%s:%d search drm-device by udev\n",
 			      getpid(), __FUNCTION__, __LINE__);
 
@@ -1124,9 +1124,8 @@ tbm_exynos_bo_import(tbm_bo bo, unsigned int key)
 	EXYNOS_RETURN_VAL_IF_FAIL(bufmgr_exynos != NULL, 0);
 
 	ret = drmHashLookup(bufmgr_exynos->hashBos, key, (void **)&privGem);
-	if (ret == 0) {
+	if (ret == 0)
 		return privGem->bo_priv;
-	}
 
 	struct drm_gem_open arg = {0, };
 	struct drm_exynos_gem_info info = {0, };
@@ -1244,9 +1243,8 @@ tbm_exynos_bo_import_fd(tbm_bo bo, tbm_fd key)
 
 	ret = drmHashLookup(bufmgr_exynos->hashBos, name, (void **)&privGem);
 	if (ret == 0) {
-		if (gem == privGem->bo_priv->gem) {
+		if (gem == privGem->bo_priv->gem)
 			return privGem->bo_priv;
-		}
 	}
 
 	unsigned int real_size = -1;
@@ -2080,7 +2078,7 @@ tbm_exynos_bo_get_flags(tbm_bo bo)
 }
 
 int
-tbm_exynos_bufmgr_bind_native_display (tbm_bufmgr bufmgr, void *native_display)
+tbm_exynos_bufmgr_bind_native_display(tbm_bufmgr bufmgr, void *native_display)
 {
 	tbm_bufmgr_exynos bufmgr_exynos;
 
@@ -2127,13 +2125,12 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 		bufmgr_exynos->fd = -1;
 
 		bufmgr_exynos->fd = tbm_drm_helper_get_master_fd();
-		if (bufmgr_exynos->fd < 0) {
+		if (bufmgr_exynos->fd < 0)
 			bufmgr_exynos->fd = _tbm_exynos_open_drm();
-		}
 
 		if (bufmgr_exynos->fd < 0) {
-			TBM_EXYNOS_LOG ("[libtbm-exynos:%d] error: Fail to create drm!\n", getpid());
-			free (bufmgr_exynos);
+			TBM_EXYNOS_LOG("[libtbm-exynos:%d] error: Fail to create drm!\n", getpid());
+			free(bufmgr_exynos);
 			return 0;
 		}
 
@@ -2141,13 +2138,12 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 
 		bufmgr_exynos->device_name = drmGetDeviceNameFromFd(bufmgr_exynos->fd);
 
-		if (!bufmgr_exynos->device_name)
-		{
-			TBM_EXYNOS_LOG ("[libtbm-exynos:%d] error: Fail to get device name!\n", getpid());
+		if (!bufmgr_exynos->device_name) {
+			TBM_EXYNOS_LOG("[libtbm-exynos:%d] error: Fail to get device name!\n", getpid());
 
 			tbm_drm_helper_unset_tbm_master_fd();
 			close(bufmgr_exynos->fd);
-			free (bufmgr_exynos);
+			free(bufmgr_exynos);
 			return 0;
 		}
 
@@ -2156,15 +2152,14 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 			bufmgr_exynos->fd = _get_render_node();
 			if (bufmgr_exynos->fd < 0) {
 				TBM_EXYNOS_LOG("[%s] get render node failed\n", target_name(), fd);
-				free (bufmgr_exynos);
+				free(bufmgr_exynos);
 				return 0;
 			}
 			DBG("[%s] Use render node:%d\n", target_name(), bufmgr_exynos->fd);
-		}
-		else {
+		} else {
 			if (!tbm_drm_helper_get_auth_info(&(bufmgr_exynos->fd), &(bufmgr_exynos->device_name), NULL)) {
-				TBM_EXYNOS_LOG ("[libtbm-exynos:%d] error: Fail to get auth drm info!\n", getpid());
-				free (bufmgr_exynos);
+				TBM_EXYNOS_LOG("[libtbm-exynos:%d] error: Fail to get auth drm info!\n", getpid());
+				free(bufmgr_exynos);
 				return 0;
 			}
 		}
@@ -2184,7 +2179,7 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	}
 
 	if (!_bufmgr_init_cache_state(bufmgr_exynos)) {
-		TBM_EXYNOS_LOG ("[libtbm-exynos:%d] error: init bufmgr cache state failed!\n", getpid());
+		TBM_EXYNOS_LOG("[libtbm-exynos:%d] error: init bufmgr cache state failed!\n", getpid());
 
 		if (tbm_backend_is_display_server())
 			tbm_drm_helper_unset_tbm_master_fd();
@@ -2233,9 +2228,8 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	bufmgr_backend->bo_lock = tbm_exynos_bo_lock;
 	bufmgr_backend->bo_unlock = tbm_exynos_bo_unlock;
 
-	if (tbm_backend_is_display_server() && !_check_render_node()) {
+	if (tbm_backend_is_display_server() && !_check_render_node())
 		bufmgr_backend->bufmgr_bind_native_display = tbm_exynos_bufmgr_bind_native_display;
-	}
 
 	if (!tbm_backend_init(bufmgr, bufmgr_backend)) {
 		TBM_EXYNOS_LOG("error: Fail to init backend!\n");
