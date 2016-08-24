@@ -69,4 +69,57 @@ typedef enum {
 #define TGL_IOC_SET_DATA			_IOW(TGL_IOC_BASE, _TGL_SET_DATA, struct tgl_user_data *)
 #define TGL_IOC_GET_DATA			_IOW(TGL_IOC_BASE, _TGL_GET_DATA, struct tgl_user_data *)
 
+#ifdef ENABLE_CACHECRTL
+
+/* indicate cache units. */
+enum e_drm_exynos_gem_cache_sel {
+	EXYNOS_DRM_L1_CACHE		= 1 << 0,
+	EXYNOS_DRM_L2_CACHE		= 1 << 1,
+	EXYNOS_DRM_ALL_CORES		= 1 << 2,
+	EXYNOS_DRM_ALL_CACHES		= EXYNOS_DRM_L1_CACHE |
+						EXYNOS_DRM_L2_CACHE,
+	EXYNOS_DRM_ALL_CACHES_CORES	= EXYNOS_DRM_L1_CACHE |
+						EXYNOS_DRM_L2_CACHE |
+						EXYNOS_DRM_ALL_CORES,
+	EXYNOS_DRM_CACHE_SEL_MASK	= EXYNOS_DRM_ALL_CACHES_CORES
+};
+
+/* indicate cache operation types. */
+enum e_drm_exynos_gem_cache_op {
+	EXYNOS_DRM_CACHE_INV_ALL	= 1 << 3,
+	EXYNOS_DRM_CACHE_INV_RANGE	= 1 << 4,
+	EXYNOS_DRM_CACHE_CLN_ALL	= 1 << 5,
+	EXYNOS_DRM_CACHE_CLN_RANGE	= 1 << 6,
+	EXYNOS_DRM_CACHE_FSH_ALL	= EXYNOS_DRM_CACHE_INV_ALL |
+						EXYNOS_DRM_CACHE_CLN_ALL,
+	EXYNOS_DRM_CACHE_FSH_RANGE	= EXYNOS_DRM_CACHE_INV_RANGE |
+						EXYNOS_DRM_CACHE_CLN_RANGE,
+	EXYNOS_DRM_CACHE_OP_MASK	= EXYNOS_DRM_CACHE_FSH_ALL |
+						EXYNOS_DRM_CACHE_FSH_RANGE
+};
+
+/**
+ * A structure for cache operation.
+ *
+ * @usr_addr: user space address.
+ *	P.S. it SHOULD BE user space.
+ * @size: buffer size for cache operation.
+ * @flags: select cache unit and cache operation.
+ * @gem_handle: a handle to a gem object.
+ *	this gem handle is needed for cache range operation to L2 cache.
+ */
+struct drm_exynos_gem_cache_op {
+	uint64_t usr_addr;
+	unsigned int size;
+	unsigned int flags;
+	unsigned int gem_handle;
+};
+
+#define DRM_EXYNOS_GEM_CACHE_OP		0x12
+
+#define DRM_IOCTL_EXYNOS_GEM_CACHE_OP  DRM_IOWR(DRM_COMMAND_BASE + \
+		DRM_EXYNOS_GEM_CACHE_OP, struct drm_exynos_gem_cache_op)
+
+#endif
+
 #endif							/* __TBM_BUFMGR_TGL_H__ */

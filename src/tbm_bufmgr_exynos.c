@@ -391,7 +391,7 @@ _exynos_cache_flush(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, in
 	if (flags & TBM_EXYNOS_CACHE_ALL)
 		cache_op.flags |= EXYNOS_DRM_ALL_CACHES_CORES;
 
-	ret = drmCommandWriteRead(fd, DRM_EXYNOS_GEM_CACHE_OP, &cache_op,
+	ret = drmCommandWriteRead(bufmgr_exynos->fd, DRM_EXYNOS_GEM_CACHE_OP, &cache_op,
 				  sizeof(cache_op));
 	if (ret) {
 		TBM_EXYNOS_LOG("error fail to flush the cache.\n");
@@ -538,7 +538,7 @@ static int
 _bufmgr_init_cache_state(tbm_bufmgr_exynos bufmgr_exynos)
 {
 #ifdef ENABLE_CACHECRTL
-	EXYNOS_RETURN_IF_FAIL(bufmgr_exynos != NULL);
+	EXYNOS_RETURN_VAL_IF_FAIL(bufmgr_exynos != NULL, 0);
 
 	if (bufmgr_exynos->use_dma_fence)
 		return 1;
