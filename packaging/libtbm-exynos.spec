@@ -38,6 +38,12 @@ make %{?_smp_mflags}
 rm -rf %{buildroot}
 mkdir -p %{buildroot}/%{TZ_SYS_RO_SHARE}/license
 cp -af COPYING %{buildroot}/%{TZ_SYS_RO_SHARE}/license/%{name}
+
+%if "%_repository" == "target-circle"
+mkdir -p %{buildroot}%{_libdir}/udev/rules.d/
+cp -af rules/99-libtbm_exynos.rules %{buildroot}%{_libdir}/udev/rules.d/
+%endif
+
 %make_install
 
 
@@ -52,4 +58,6 @@ ln -s libtbm_exynos.so %{_libdir}/bufmgr/libtbm_default.so
 %files
 %{_libdir}/bufmgr/libtbm_*.so*
 %{TZ_SYS_RO_SHARE}/license/%{name}
-
+%if "%_repository" == "target-circle"
+%{_libdir}/udev/rules.d/99-libtbm_exynos.rules
+%endif
