@@ -54,6 +54,8 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <hardware/hardware.h>
 #include <hardware/gralloc.h>
 
+#define ALIGN(x, a)       (((x) + (a) - 1) & ~((a) - 1))
+
 char *target_name()
 {
 	FILE *f;
@@ -472,6 +474,40 @@ tbm_android_surface_get_plane_data(int width, int height,
 				  tbm_format format, int plane_idx, uint32_t *size, uint32_t *offset,
 				  uint32_t *pitch, int *bo_idx)
 {
+	/* bpp is bytes per pixel */
+	size_t bpr;
+	int bpp, vstride;
+
+	*offset = 0;
+	*pitch = 0;
+	*size = 0;
+	*bo_idx = 0;
+
+	switch (format) {
+	case TBM_FORMAT_RGBA8888:
+	case TBM_FORMAT_RGBX8888:
+	case TBM_FORMAT_BGRA8888:
+		bpp = 4;
+		break;
+	case TBM_FORMAT_RGB888:
+		bpp = 3;
+		break;
+	case TBM_FORMAT_RGB565:
+		bpp = 2;
+		break;
+	default:
+		return 0;
+	}
+
+	bpr = ALIGN(width*bpp, 64);
+	vstride = ALIGN(height, 16);
+	if (vstride < height + 2)
+		*size = bpr * (height + 2);
+	else
+		*size = bpr * vstride;
+	*pitch = bpr / bpp;
+	*size = ALIGN(*size, PAGE_SIZE);
+
 	return 1;
 }
 
