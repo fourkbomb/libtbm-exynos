@@ -119,6 +119,7 @@ struct _tbm_bo_android {
 	int height;
 	void *pBase;          /* virtual address */
 	unsigned int map_cnt;
+	unsigned int flags_tbm;
 };
 
 /* tbm bufmgr private for android */
@@ -268,6 +269,7 @@ tbm_android_surface_bo_alloc(tbm_bo bo, int width, int height, int format,
 	bo_android->handler = handler;
 	bo_android->width = width;
 	bo_android->height = height;
+	bo_android->flags_tbm = flags;
 
 	return (void *)bo_android;
 }
@@ -514,7 +516,14 @@ tbm_android_surface_get_plane_data(int width, int height,
 int
 tbm_android_bo_get_flags(tbm_bo bo)
 {
-	return 25;
+	tbm_bo_android bo_android;
+
+	ANDROID_RETURN_VAL_IF_FAIL(bo != NULL, 0);
+
+	bo_android = (tbm_bo_android)tbm_backend_get_bo_priv(bo);
+	ANDROID_RETURN_VAL_IF_FAIL(bo_android != NULL, 0);
+
+	return bo_android->flags_tbm;
 }
 
 int
