@@ -140,6 +140,8 @@ _android_bo_handle(tbm_bufmgr_android bufmgr_android, tbm_bo_android bo_android,
 
 	switch (device) {
 	case TBM_DEVICE_DEFAULT:
+	case TBM_DEVICE_2D:
+		bo_handle.u32 = (uint32_t)bo_android->handler;
 	case TBM_DEVICE_CPU:
 		if (!bo_android->pBase) {
 			void *map = NULL;
@@ -159,7 +161,6 @@ _android_bo_handle(tbm_bufmgr_android bufmgr_android, tbm_bo_android bo_android,
 		}
 		bo_handle.ptr = bo_android->pBase;
 		break;
-	case TBM_DEVICE_2D:
 	case TBM_DEVICE_3D:
 	case TBM_DEVICE_MM:
 	default:
