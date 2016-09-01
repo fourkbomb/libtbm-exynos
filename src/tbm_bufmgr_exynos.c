@@ -232,6 +232,7 @@ struct _tbm_bo_exynos {
 
 	tbm_bo_cache_state cache_state;
 	unsigned int map_cnt;
+	int last_map_device;
 };
 
 /* tbm bufmgr private for exynos */
@@ -1459,6 +1460,8 @@ tbm_exynos_bo_map(tbm_bo bo, int device, int opt)
 	if (bo_exynos->map_cnt == 0)
 		_bo_set_cache_state(bufmgr_exynos, bo_exynos, device, opt);
 
+	bo_exynos->last_map_device = device;
+
 	bo_exynos->map_cnt++;
 
 	return bo_handle;
@@ -1478,6 +1481,7 @@ tbm_exynos_bo_unmap(tbm_bo bo)
 	bo_exynos = (tbm_bo_exynos)tbm_backend_get_bo_priv(bo);
 	EXYNOS_RETURN_VAL_IF_FAIL(bo_exynos != NULL, 0);
 
+
 	if (!bo_exynos->gem)
 		return 0;
 
@@ -1485,6 +1489,13 @@ tbm_exynos_bo_unmap(tbm_bo bo)
 
 	if (bo_exynos->map_cnt == 0)
 		_bo_save_cache_state(bufmgr_exynos, bo_exynos);
+
+#ifdef ENABLE_CACHECRTL
+	if (bo_exynos->last_map_device == TBM_DEVICE_CPU)
+		_exynos_cache_flush(bufmgr_exynos, bo_exynos, TBM_EXYNOS_CACHE_FLUSH_ALL);
+#endif
+
+	bo_exynos->last_map_device = -1;
 
 	DBG("     [%s] bo:%p, gem:%d(%d), fd:%d\n", target_name(),
 	    bo,
