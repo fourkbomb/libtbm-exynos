@@ -120,6 +120,7 @@ struct _tbm_bo_android {
 	void *pBase;          /* virtual address */
 	unsigned int map_cnt;
 	unsigned int flags_tbm;
+	uint32_t size;
 };
 
 /* tbm bufmgr private for android */
@@ -127,6 +128,66 @@ struct _tbm_bufmgr_android {
 	gralloc_module_t *gralloc_module;
 	alloc_device_t *alloc_dev;
 };
+
+/**
+ * @brief get the data of the surface.
+ * @note Use NULL pointers on the components you're not interested
+ * in: they'll be ignored by the function.
+ * @param[in] width : the width of the surface
+ * @param[in] height : the height of the surface
+ * @param[in] format : the format of the surface
+ * @param[out] size : the size of the surface
+ * @param[out] pitch : the pitch of the surface
+ * @return 1 if this function succeeds, otherwise 0.
+ */
+static int
+_tbm_android_surface_get_data(int width, int height, tbm_format format,
+							  uint32_t *size, uint32_t *pitch)
+{
+	/* function heavily inspired by the gralloc */
+	/* bpp is bytes per pixel */
+	size_t bpr;
+	int bpp, vstride;
+
+	uint32_t _pitch = 0;
+	uint32_t _size = 0;
+
+	switch (format) {
+	case TBM_FORMAT_RGBA8888:
+	case TBM_FORMAT_RGBX8888:
+	case TBM_FORMAT_BGRA8888:
+		bpp = 4;
+		break;
+	case TBM_FORMAT_RGB888:
+		bpp = 3;
+		break;
+	case TBM_FORMAT_RGB565:
+		bpp = 2;
+		break;
+	default:
+		return 0;
+	}
+
+	/* bpr is bytes per row */
+	bpr = ALIGN(width*bpp, 64);
+	vstride = ALIGN(height, 16);
+	if (vstride < height + 2)
+		_size = bpr * (height + 2);
+	else
+		_size = bpr * vstride;
+	_pitch = bpr / bpp;
+	_size = ALIGN(_size, PAGE_SIZE);
+
+	if (size) {
+		*size = _size;
+	}
+
+	if (pitch) {
+		*pitch = _pitch;
+	}
+
+	return 1;
+}
 
 static tbm_bo_handle
 _android_bo_handle(tbm_bufmgr_android bufmgr_android, tbm_bo_android bo_android,
@@ -239,6 +300,7 @@ tbm_android_surface_bo_alloc(tbm_bo bo, int width, int height, int format,
 	alloc_device_t *alloc_dev;
 	buffer_handle_t handler;
 	int stride;
+	uint32_t size;
 
 	bufmgr_android = (tbm_bufmgr_android) tbm_backend_get_bufmgr_priv(bo);
 	ANDROID_RETURN_VAL_IF_FAIL(bufmgr_android != NULL, 0);
@@ -266,10 +328,19 @@ tbm_android_surface_bo_alloc(tbm_bo bo, int width, int height, int format,
 		return 0;
 	}
 
+	ret = _tbm_android_surface_get_data(width, height, format, &size, NULL);
+	if (!ret) {
+		TBM_ANDROID_LOG
+			("error: Cannot get surface data\n");
+		free(bo_android);
+		return 0;
+	}
+
 	bo_android->handler = handler;
 	bo_android->width = width;
 	bo_android->height = height;
 	bo_android->flags_tbm = flags;
+	bo_android->size = size;
 
 	return (void *)bo_android;
 }
@@ -277,7 +348,14 @@ tbm_android_surface_bo_alloc(tbm_bo bo, int width, int height, int format,
 static int
 tbm_android_bo_size(tbm_bo bo)
 {
-	return 25;
+	tbm_bo_android bo_android;
+
+	ANDROID_RETURN_VAL_IF_FAIL(bo != NULL, 0);
+
+	bo_android = (tbm_bo_android)tbm_backend_get_bo_priv(bo);
+	ANDROID_RETURN_VAL_IF_FAIL(bo_android != NULL, 0);
+
+	return bo_android->size;
 }
 
 static void *
@@ -476,41 +554,19 @@ tbm_android_surface_get_plane_data(int width, int height,
 				  tbm_format format, int plane_idx, uint32_t *size, uint32_t *offset,
 				  uint32_t *pitch, int *bo_idx)
 {
-	/* bpp is bytes per pixel */
-	size_t bpr;
-	int bpp, vstride;
+	int ret;
 
-	*offset = 0;
-	*pitch = 0;
-	*size = 0;
-	*bo_idx = 0;
-
-	switch (format) {
-	case TBM_FORMAT_RGBA8888:
-	case TBM_FORMAT_RGBX8888:
-	case TBM_FORMAT_BGRA8888:
-		bpp = 4;
-		break;
-	case TBM_FORMAT_RGB888:
-		bpp = 3;
-		break;
-	case TBM_FORMAT_RGB565:
-		bpp = 2;
-		break;
-	default:
-		return 0;
+	/* As we use for allocate the buffer libgralloc, the offset and bo_idx is 0. */
+	if (offset) {
+		*offset = 0;
+	}
+	if (bo_idx) {
+		*bo_idx = 0;
 	}
 
-	bpr = ALIGN(width*bpp, 64);
-	vstride = ALIGN(height, 16);
-	if (vstride < height + 2)
-		*size = bpr * (height + 2);
-	else
-		*size = bpr * vstride;
-	*pitch = bpr / bpp;
-	*size = ALIGN(*size, PAGE_SIZE);
+	ret = _tbm_android_surface_get_data(width, height, format, size, pitch);
 
-	return 1;
+	return ret;
 }
 
 int
