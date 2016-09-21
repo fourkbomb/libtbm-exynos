@@ -135,13 +135,13 @@ struct _tbm_bufmgr_android {
  * in: they'll be ignored by the function.
  * @param[in] width : the width of the surface
  * @param[in] height : the height of the surface
- * @param[in] format : the format of the surface
+ * @param[in] android_format : the android_format of the surface
  * @param[out] size : the size of the surface
  * @param[out] pitch : the pitch of the surface
  * @return 1 if this function succeeds, otherwise 0.
  */
 static int
-_tbm_android_surface_get_data(int width, int height, tbm_format format,
+_tbm_android_surface_get_data(int width, int height, int android_format,
 							  uint32_t *size, uint32_t *pitch)
 {
 	/* function heavily inspired by the gralloc */
@@ -152,16 +152,17 @@ _tbm_android_surface_get_data(int width, int height, tbm_format format,
 	uint32_t _pitch = 0;
 	uint32_t _size = 0;
 
-	switch (format) {
-	case TBM_FORMAT_RGBA8888:
-	case TBM_FORMAT_RGBX8888:
-	case TBM_FORMAT_BGRA8888:
+	switch (android_format) {
+	case HAL_PIXEL_FORMAT_RGBA_8888:
+	case HAL_PIXEL_FORMAT_RGBX_8888:
+	case HAL_PIXEL_FORMAT_BGRA_8888:
 		bpp = 4;
 		break;
-	case TBM_FORMAT_RGB888:
+	case HAL_PIXEL_FORMAT_RGB_888:
 		bpp = 3;
 		break;
-	case TBM_FORMAT_RGB565:
+	case HAL_PIXEL_FORMAT_RGB_565:
+	case HAL_PIXEL_FORMAT_RGBA_4444:
 		bpp = 2;
 		break;
 	default:
@@ -238,66 +239,82 @@ _android_bo_handle(tbm_bufmgr_android bufmgr_android, tbm_bo_android bo_android,
 }
 
 /* At this stage, we use formats that have a full match with Android formats.
- * In the future, need to increase the number of matching formats.*/
+ * In the future, we need to increase the number of matching formats.*/
 static int
-_get_android_format_from_tbm(unsigned int ftbm)
+_get_android_format_from_tbm(unsigned int tbm_format)
 {
-	int format = 0;
+	int android_format = 0;
 
-	switch (ftbm) {
+	switch (tbm_format) {
 	case TBM_FORMAT_RGBA8888:
-		format = HAL_PIXEL_FORMAT_RGBA_8888;
+		android_format = HAL_PIXEL_FORMAT_RGBA_8888;
 		break;
 	case TBM_FORMAT_RGBX8888:
-		format = HAL_PIXEL_FORMAT_RGBX_8888;
+		android_format = HAL_PIXEL_FORMAT_RGBX_8888;
 		break;
 	case TBM_FORMAT_RGB888:
-		format = HAL_PIXEL_FORMAT_RGB_888;
+		android_format = HAL_PIXEL_FORMAT_RGB_888;
 		break;
 	case TBM_FORMAT_RGB565:
-		format = HAL_PIXEL_FORMAT_RGB_565;
+		android_format = HAL_PIXEL_FORMAT_RGB_565;
 		break;
 	case TBM_FORMAT_BGRA8888:
-		format = HAL_PIXEL_FORMAT_BGRA_8888;
+		android_format = HAL_PIXEL_FORMAT_BGRA_8888;
 		break;
 	case TBM_FORMAT_RGBA4444:
-		format = HAL_PIXEL_FORMAT_RGBA_4444;
+		android_format = HAL_PIXEL_FORMAT_RGBA_4444;
 		break;
 	}
 
-	return format;
+	return android_format;
+}
+
+/*
+ * TODO: think whether we able to create some 'flags match table'
+ */
+static int
+_get_tbm_flags_from_android(int android_flags)
+{
+	int tbm_flags = -1;
+
+	if (android_flags == (GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_OFTEN))
+		tbm_flags = TBM_BO_DEFAULT;
+	else if (android_flags == (GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN))
+		tbm_flags = TBM_BO_SCANOUT;
+
+	return tbm_flags;
 }
 
 /* For the TBM_BO_SCANOUT flag we use the additional flag
  * GRALLOC_USAGE_HW_COMPOSER, because the buffer will be used by the
  * Hardware Composer.*/
 static int
-_get_android_usage_from_tbm(unsigned int flags)
+_get_android_flags_from_tbm(int tbm_flags)
 {
-	int usage = 0;
+	int android_flags = -1;
 
-	/* TODO: while TBM_BO_DEFAULT equals 0(zero) it's useles to use logical operations
+	/* TODO: while TBM_BO_DEFAULT equals 0(zero) it's useless to use logical operations
 	 * I'm a little bit confused..., maybe TBM_BO_DEFAULT must be 1 << 0 ?
-	 * So, at least now, we'll use equeal operator instead logical OR operator
+	 * So, at least now, we'll use equal operator instead logical OR operator
 	 * I think we must allow a read operation for the default bo. */
-	if (flags == TBM_BO_DEFAULT)
-		usage |= GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_OFTEN;
-	else if (flags == TBM_BO_SCANOUT)
-		usage |= GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN;
+	if (tbm_flags == TBM_BO_DEFAULT)
+		android_flags = GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_OFTEN;
+	else if (tbm_flags == TBM_BO_SCANOUT)
+		android_flags = GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN;
 
-	return usage;
+	return android_flags;
 }
 
 void *
-tbm_android_surface_bo_alloc(tbm_bo bo, int width, int height, int format,
-							 int flags, int bo_idx)
+tbm_android_surface_bo_alloc(tbm_bo bo, int width, int height, int tbm_format,
+							 int tbm_flags, int bo_idx)
 {
 	ANDROID_RETURN_VAL_IF_FAIL(bo != NULL, 0);
 
 	int ret;
 	tbm_bo_android bo_android;
 	tbm_bufmgr_android bufmgr_android;
-	int usage_android, format_android;
+	int android_flags, android_format;
 	alloc_device_t *alloc_dev;
 	buffer_handle_t handler;
 	int stride;
@@ -315,12 +332,11 @@ tbm_android_surface_bo_alloc(tbm_bo bo, int width, int height, int format,
 		return 0;
 	}
 
-	usage_android = _get_android_usage_from_tbm(flags);
+	android_flags  = _get_android_flags_from_tbm(tbm_flags);
+	android_format = _get_android_format_from_tbm(tbm_format);
 
-	format_android = _get_android_format_from_tbm(format);
-
-	ret = alloc_dev->alloc(alloc_dev, width, height, format_android,
-						   usage_android, &handler, &stride);
+	ret = alloc_dev->alloc(alloc_dev, width, height, android_format,
+			android_flags, &handler, &stride);
 	if (ret) {
 		TBM_ANDROID_LOG
 			("error: Cannot allocate a buffer(%dx%d) in graphic memory\n",
@@ -329,7 +345,7 @@ tbm_android_surface_bo_alloc(tbm_bo bo, int width, int height, int format,
 		return 0;
 	}
 
-	ret = _tbm_android_surface_get_data(width, height, format, &size, NULL);
+	ret = _tbm_android_surface_get_data(width, height, android_format, &size, NULL);
 	if (!ret) {
 		TBM_ANDROID_LOG
 			("error: Cannot get surface data\n");
@@ -340,10 +356,70 @@ tbm_android_surface_bo_alloc(tbm_bo bo, int width, int height, int format,
 	bo_android->handler = handler;
 	bo_android->width = width;
 	bo_android->height = height;
-	bo_android->flags_tbm = flags;
+	bo_android->flags_tbm = tbm_flags;
 	bo_android->size = size;
 
 	return (void *)bo_android;
+}
+
+static void *
+tbm_android_import(tbm_bo bo, void *native)
+{
+	tbm_bufmgr_android bufmgr_android;
+	native_handle_t* native_handle;
+	tbm_bo_android bo_android;
+
+	int tbm_flags, android_format, android_flags;
+	int width, height;
+	uint32_t size;
+	int ret;
+
+	ANDROID_RETURN_VAL_IF_FAIL(bo != NULL, NULL);
+	ANDROID_RETURN_VAL_IF_FAIL(native != NULL, NULL);
+
+	bufmgr_android = (tbm_bufmgr_android)tbm_backend_get_bufmgr_priv(bo);
+	ANDROID_RETURN_VAL_IF_FAIL(bufmgr_android != NULL, NULL);
+
+	native_handle = native;
+	ret = bufmgr_android->gralloc_module->registerBuffer(bufmgr_android->gralloc_module, native_handle);
+	if (ret)
+		return NULL;
+
+	bo_android = calloc(1, sizeof(struct _tbm_bo_android));
+	if (!bo_android) {
+		TBM_ANDROID_LOG("error bo:%p fail to allocate the bo private\n", bo);
+		return NULL;
+	}
+
+	/*
+	 * TODO: must be confirmed by some documentation
+	 *
+	 * data[numFds + 4] = usage (flags) (access type)
+	 * data[numFds + 5] = width
+	 * data[numFds + 6] = height
+	 * data[numFds + 7] = format
+	 */
+	android_flags = native_handle->data[native_handle->numFds + 4];
+	width = native_handle->data[native_handle->numFds + 5];
+	height = native_handle->data[native_handle->numFds + 6];
+	android_format = native_handle->data[native_handle->numFds + 7];
+
+	tbm_flags  = _get_tbm_flags_from_android(android_flags);
+
+	ret = _tbm_android_surface_get_data(width, height, android_format, &size, NULL);
+	if (!ret) {
+		TBM_ANDROID_LOG("error: Cannot get surface data\n");
+		free(bo_android);
+		return 0;
+	}
+
+	bo_android->handler = native_handle;
+	bo_android->width = width;
+	bo_android->height = height;
+	bo_android->flags_tbm = tbm_flags;
+	bo_android->size = size;
+
+	return bo_android;
 }
 
 static int
@@ -357,12 +433,6 @@ tbm_android_bo_size(tbm_bo bo)
 	ANDROID_RETURN_VAL_IF_FAIL(bo_android != NULL, 0);
 
 	return bo_android->size;
-}
-
-static void *
-tbm_android_bo_alloc(tbm_bo bo, int size, int flags)
-{
-	return NULL;
 }
 
 static void
@@ -384,31 +454,6 @@ tbm_android_bo_free(tbm_bo bo)
 									bo_android->handler);
 
 	free(bo_android);
-}
-
-
-static void *
-tbm_android_bo_import(tbm_bo bo, unsigned int key)
-{
-	return NULL;
-}
-
-static void *
-tbm_android_bo_import_fd(tbm_bo bo, tbm_fd key)
-{
-	return NULL;
-}
-
-static unsigned int
-tbm_android_bo_export(tbm_bo bo)
-{
-	return 25;
-}
-
-tbm_fd
-tbm_android_bo_export_fd(tbm_bo bo)
-{
-	return 25;
 }
 
 static tbm_bo_handle
@@ -552,10 +597,10 @@ tbm_android_surface_supported_format(uint32_t **formats, uint32_t *num)
  */
 int
 tbm_android_surface_get_plane_data(int width, int height,
-				  tbm_format format, int plane_idx, uint32_t *size, uint32_t *offset,
+				  tbm_format tbm_format, int plane_idx, uint32_t *size, uint32_t *offset,
 				  uint32_t *pitch, int *bo_idx)
 {
-	int ret;
+	int ret, android_format;
 
 	/* As we use for allocate the buffer libgralloc, the offset and bo_idx is 0. */
 	if (offset) {
@@ -565,7 +610,8 @@ tbm_android_surface_get_plane_data(int width, int height,
 		*bo_idx = 0;
 	}
 
-	ret = _tbm_android_surface_get_data(width, height, format, size, pitch);
+	android_format = _get_android_format_from_tbm(tbm_format);
+	ret = _tbm_android_surface_get_data(width, height, android_format, size, pitch);
 
 	return ret;
 }
@@ -646,12 +692,7 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	bufmgr_backend->priv = (void *)bufmgr_android;
 	bufmgr_backend->bufmgr_deinit = tbm_android_bufmgr_deinit;
 	bufmgr_backend->bo_size = tbm_android_bo_size;
-	bufmgr_backend->bo_alloc = tbm_android_bo_alloc;
 	bufmgr_backend->bo_free = tbm_android_bo_free;
-	bufmgr_backend->bo_import = tbm_android_bo_import;
-	bufmgr_backend->bo_import_fd = tbm_android_bo_import_fd;
-	bufmgr_backend->bo_export = tbm_android_bo_export;
-	bufmgr_backend->bo_export_fd = tbm_android_bo_export_fd;
 	bufmgr_backend->bo_get_handle = tbm_android_bo_get_handle;
 	bufmgr_backend->bo_map = tbm_android_bo_map;
 	bufmgr_backend->bo_unmap = tbm_android_bo_unmap;
@@ -666,6 +707,7 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	 * knowing the height and width of the buffer.*/
 	bufmgr_backend->surface_bo_alloc = tbm_android_surface_bo_alloc;
 
+	bufmgr_backend->bo_import_ = tbm_android_import;
 /*	if (tbm_backend_is_display_server() && !_check_render_node()) {
 		bufmgr_backend->bufmgr_bind_native_display = tbm_android_bufmgr_bind_native_display;
 	}
