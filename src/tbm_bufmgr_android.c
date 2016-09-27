@@ -149,7 +149,6 @@ _tbm_android_surface_get_data(int width, int height, int android_format,
 	size_t bpr;
 	int bpp, vstride;
 
-	uint32_t _pitch = 0;
 	uint32_t _size = 0;
 
 	switch (android_format) {
@@ -176,7 +175,6 @@ _tbm_android_surface_get_data(int width, int height, int android_format,
 		_size = bpr * (height + 2);
 	else
 		_size = bpr * vstride;
-	_pitch = bpr / bpp;
 	_size = ALIGN(_size, PAGE_SIZE);
 
 	if (size) {
@@ -184,7 +182,7 @@ _tbm_android_surface_get_data(int width, int height, int android_format,
 	}
 
 	if (pitch) {
-		*pitch = _pitch;
+		*pitch = bpr;
 	}
 
 	return 1;
