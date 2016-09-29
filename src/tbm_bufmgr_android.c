@@ -56,6 +56,17 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #define ALIGN(x, a)       (((x) + (a) - 1) & ~((a) - 1))
 
+#define TBM_COLOR_FORMAT_COUNT (6)
+
+uint32_t tbm_android_color_format_list[TBM_COLOR_FORMAT_COUNT] = {
+												TBM_FORMAT_RGBA8888,
+												TBM_FORMAT_RGBX8888,
+												TBM_FORMAT_RGB888,
+												TBM_FORMAT_RGB565,
+												TBM_FORMAT_BGRA8888,
+												TBM_FORMAT_RGBA4444
+											};
+
 char *target_name()
 {
 	FILE *f;
@@ -578,6 +589,23 @@ tbm_android_bufmgr_deinit(void *priv)
 int
 tbm_android_surface_supported_format(uint32_t **formats, uint32_t *num)
 {
+	uint32_t *color_formats = NULL;
+
+	ANDROID_RETURN_VAL_IF_FAIL(formats != NULL, 0);
+	ANDROID_RETURN_VAL_IF_FAIL(num != NULL, 0);
+
+	color_formats = (uint32_t *)calloc(TBM_COLOR_FORMAT_COUNT,
+									   sizeof(uint32_t));
+
+	if (color_formats == NULL)
+		return 0;
+
+	memcpy(color_formats, tbm_android_color_format_list,
+		   sizeof(uint32_t) * TBM_COLOR_FORMAT_COUNT);
+
+	*formats = color_formats;
+	*num = TBM_COLOR_FORMAT_COUNT;
+
 	return 1;
 }
 
