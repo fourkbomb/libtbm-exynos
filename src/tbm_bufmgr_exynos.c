@@ -358,8 +358,6 @@ _exynos_cache_flush(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, in
 	if (bufmgr_exynos->use_dma_fence)
 		return 1;
 
-	EXYNOS_RETURN_VAL_IF_FAIL(bo_exynos != NULL, 0);
-
 	struct drm_exynos_gem_cache_op cache_op = {0, };
 	int ret;
 
@@ -442,7 +440,7 @@ _bo_set_cache_state(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, in
 	char need_flush = 0;
 	unsigned short cntFlush = 0;
 
-	if (bo_exynos->flags_exynos & EXYNOS_BO_NONCACHABLE)
+	if (!(bo_exynos->flags_exynos & EXYNOS_BO_CACHABLE))
 		return 1;
 
 	/* get cache state of a bo */
@@ -452,7 +450,7 @@ _bo_set_cache_state(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, in
 	/* get global cache flush count */
 	cntFlush = (unsigned short)_tgl_get_data(bufmgr_exynos->tgl_fd, GLOBAL_KEY);
 
-	if (opt == TBM_DEVICE_CPU) {
+	if (device == TBM_DEVICE_CPU) {
 		if (bo_exynos->cache_state.data.isDirtied == DEVICE_CO &&
 		    bo_exynos->cache_state.data.isCached)
 			need_flush = TBM_EXYNOS_CACHE_INV;
@@ -553,8 +551,6 @@ _bufmgr_init_cache_state(tbm_bufmgr_exynos bufmgr_exynos)
 			TBM_EXYNOS_LOG("[libtbm-exynos:%d] "
 				       "error: Fail to open global_lock:%s\n",
 				       getpid(), tgl_devfile);
-
-			close(bufmgr_exynos->tgl_fd);
 			return 0;
 		}
 	}
