@@ -288,7 +288,7 @@ _get_tbm_flags_from_android(int android_flags)
 
 	if (android_flags == (GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_OFTEN))
 		tbm_flags = TBM_BO_DEFAULT;
-	else if (android_flags == (GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN))
+	else if (android_flags == (GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_PRIVATE_NONECACHE))
 		tbm_flags = TBM_BO_SCANOUT;
 
 	return tbm_flags;
@@ -309,7 +309,7 @@ _get_android_flags_from_tbm(int tbm_flags)
 	if (tbm_flags == TBM_BO_DEFAULT)
 		android_flags = GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_OFTEN;
 	else if (tbm_flags == TBM_BO_SCANOUT)
-		android_flags = GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN;
+		android_flags = GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_PRIVATE_NONECACHE;
 
 	return android_flags;
 }

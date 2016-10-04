@@ -15,11 +15,12 @@ Descriptionion: Tizen Buffer manager backend module for android.
 %setup -q -c %{name}-%{version}
 
 %build
+# -DEXYNOS4_ENHANCEMENTS - to allow the using of nonecached graphic buffers
 PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
 ./autogen.sh --build=x86_64-unknown-linux-gnu \
 	     --host=arm-linux-androideabi \
 	     --disable-static \
-             CFLAGS="${CFLAGS} -Wall -Werror" \
+             CFLAGS="${CFLAGS} -Wall -Werror -DEXYNOS4_ENHANCEMENTS" \
              LDFLAGS="${LDFLAGS} -Wl,--hash-style=both -Wl,--as-needed"
 
 make %{?_smp_mflags}
