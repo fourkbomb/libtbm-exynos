@@ -4,7 +4,6 @@ Release:        1
 License:        MIT
 Summary:        Tizen Buffer Manager - exynos backend
 Group:          System/Libraries
-ExcludeArch:    i586
 Source0:        %{name}-%{version}.tar.gz
 
 BuildRequires:  pkgconfig(libdrm)
@@ -12,6 +11,7 @@ BuildRequires:  pkgconfig(libdrm_exynos)
 BuildRequires:  pkgconfig(libtbm)
 BuildRequires:  pkgconfig(dlog)
 BuildRequires:  pkgconfig(libudev)
+ExclusiveArch:  %{arm} aarch64
 
 %description
 descriptionion: Tizen Buffer manager backend module for exynos
