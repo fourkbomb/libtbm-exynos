@@ -372,10 +372,10 @@ tbm_android_surface_bo_alloc(tbm_bo bo, int width, int height, int tbm_format,
 }
 
 static void *
-tbm_android_import(tbm_bo bo, void *native)
+tbm_android_import(tbm_bo bo, const void *native)
 {
 	tbm_bufmgr_android bufmgr_android;
-	native_handle_t* native_handle;
+	const native_handle_t* native_handle;
 	tbm_bo_android bo_android;
 
 	int tbm_flags, android_format, android_flags;
@@ -429,6 +429,19 @@ tbm_android_import(tbm_bo bo, void *native)
 	bo_android->size = size;
 
 	return bo_android;
+}
+
+static const void *
+tbm_android_export(tbm_bo bo)
+{
+	tbm_bo_android bo_android;
+
+	ANDROID_RETURN_VAL_IF_FAIL(bo != NULL, NULL);
+
+	bo_android = (tbm_bo_android)tbm_backend_get_bo_priv(bo);
+	ANDROID_RETURN_VAL_IF_FAIL(bo_android != NULL, NULL);
+
+	return bo_android->handler;
 }
 
 static int
@@ -734,6 +747,7 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	bufmgr_backend->surface_bo_alloc = tbm_android_surface_bo_alloc;
 
 	bufmgr_backend->bo_import_ = tbm_android_import;
+	bufmgr_backend->bo_export_ = tbm_android_export;
 /*	if (tbm_backend_is_display_server() && !_check_render_node()) {
 		bufmgr_backend->bufmgr_bind_native_display = tbm_android_bufmgr_bind_native_display;
 	}
