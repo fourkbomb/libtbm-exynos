@@ -35,39 +35,97 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
-#include <string.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <tbm_bufmgr.h>
+
 #include <tbm_bufmgr_backend.h>
-#include <pthread.h>
 #include <tbm_surface.h>
-#include <tbm_surface_internal.h>
 #include <dlog/dlog.h>
 
 #include <hardware/hardware.h>
 #include <hardware/gralloc.h>
 
+static char *_target_name(void);
+
+#define TBM_ANDROID_LOG(fmt, args...) LOGE("\033[31m"  "[%s]" fmt "\033[0m",\
+										   _target_name(), ##args)
+
+/* check condition */
+#define ANDROID_RETURN_IF_FAIL(cond) {\
+	if (!(cond)) {\
+		TBM_ANDROID_LOG("[%s] : '%s' failed.\n", __func__, #cond);\
+		return;\
+	} \
+}
+
+#define ANDROID_RETURN_VAL_IF_FAIL(cond, val) {\
+	if (!(cond)) {\
+		TBM_ANDROID_LOG("[%s] : '%s' failed.\n", __func__, #cond);\
+		return val;\
+	} \
+}
+
+/* this macros has been copied from a gralloc implementation */
 #define ALIGN(x, a)       (((x) + (a) - 1) & ~((a) - 1))
 
-#define TBM_COLOR_FORMAT_COUNT (6)
+/*
+ * Android to Tizen buffer formats map. (and vice versa)
+ *
+ * The formats set we currently support.
+ * At this stage, we use formats that have a full match with Android formats.
+ * In the future, we need to increase the number of matching formats.*/
 
-uint32_t tbm_android_color_format_list[TBM_COLOR_FORMAT_COUNT] = {
-												TBM_FORMAT_RGBA8888,
-												TBM_FORMAT_RGBX8888,
-												TBM_FORMAT_RGB888,
-												TBM_FORMAT_RGB565,
-												TBM_FORMAT_BGRA8888,
-												TBM_FORMAT_RGBA4444
-											};
+#define ANDROID_TIZEN_FORMATS_MAP_SIZE 6
 
-char *target_name()
+static const uint32_t android_tizen_formats_map[ANDROID_TIZEN_FORMATS_MAP_SIZE][2] =
+{
+	{ HAL_PIXEL_FORMAT_RGBA_8888, TBM_FORMAT_RGBA8888 },
+	{ HAL_PIXEL_FORMAT_RGBX_8888, TBM_FORMAT_RGBX8888 },
+	{ HAL_PIXEL_FORMAT_RGB_888,   TBM_FORMAT_RGB888 },
+	{ HAL_PIXEL_FORMAT_RGB_565,   TBM_FORMAT_RGB565 },
+	{ HAL_PIXEL_FORMAT_BGRA_8888, TBM_FORMAT_BGRA8888 },
+	{ HAL_PIXEL_FORMAT_RGBA_4444, TBM_FORMAT_RGBA4444 }
+};
+
+/*
+ * Android to Tizen flags map. (and vice versa)
+ *
+ *  - for the TBM_BO_SCANOUT flag we use the additional flag
+ * GRALLOC_USAGE_HW_COMPOSER, because the buffer will be used by the
+ * Hardware Composer.
+ */
+
+#define ANDROID_TIZEN_FLAGS_MAP_SIZE 2
+
+static const uint32_t android_tizen_flags_map[ANDROID_TIZEN_FLAGS_MAP_SIZE][2] =
+{
+	{ GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_OFTEN, TBM_BO_DEFAULT },
+	{ GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN |
+			GRALLOC_USAGE_PRIVATE_NONECACHE, TBM_BO_SCANOUT }
+};
+
+
+typedef struct _tbm_bufmgr_android *tbm_bufmgr_android;
+typedef struct _tbm_bo_android *tbm_bo_android;
+
+/* tbm buffer object for android */
+struct _tbm_bo_android {
+	buffer_handle_t handler;
+	int width;
+	int height;
+	void *pBase;          /* virtual address */
+	unsigned int map_cnt;
+	unsigned int flags_tbm;
+	uint32_t size;
+};
+
+/* tbm bufmgr private for android */
+struct _tbm_bufmgr_android {
+	const gralloc_module_t *gralloc_module;
+	alloc_device_t *alloc_dev;
+};
+
+
+static char *
+_target_name(void)
 {
 	FILE *f;
 	char *slash;
@@ -101,44 +159,46 @@ char *target_name()
 	return app_name;
 }
 
-#define TBM_ANDROID_LOG(fmt, args...) LOGE("\033[31m"  "[%s]" fmt "\033[0m",\
-										   target_name(), ##args)
+/* @brief This function can be used to get the match for a @c value from the @c map table.
+ *
+ * @param[in]: map - the map to find the match in.
+ * @param[in]: row_amount - the amount of rows of the map.
+ * @param[in]: value - value you're looking the match for.
+ * @param[in]: direction - the direction of 'matching', 0 - right to left, otherwise - left to right.
+ * @return the match or -1 in an error case.
+*/
+static int32_t
+_get_match(const uint32_t map[][2], uint32_t row_amount, uint32_t value, int direction)
+{
+	int i, direct;
 
-/* check condition */
-#define ANDROID_RETURN_IF_FAIL(cond) {\
-	if (!(cond)) {\
-		TBM_ANDROID_LOG("[%s] : '%s' failed.\n", __func__, #cond);\
-		return;\
-	} \
+	direct = direction ? 0 : 1;
+
+	for (i = 0; i < row_amount; i++) {
+		if (map[i][direct] == value)
+			return map[i][direct ^ 1];
+	}
+
+	return -1;
 }
 
-#define ANDROID_RETURN_VAL_IF_FAIL(cond, val) {\
-	if (!(cond)) {\
-		TBM_ANDROID_LOG("[%s] : '%s' failed.\n", __func__, #cond);\
-		return val;\
-	} \
+static int
+_get_android_format_from_tbm(unsigned int tbm_format)
+{
+	return _get_match(android_tizen_formats_map, ANDROID_TIZEN_FORMATS_MAP_SIZE, tbm_format, 0);
 }
 
-typedef struct _tbm_bufmgr_android *tbm_bufmgr_android;
-typedef struct _tbm_bo_android *tbm_bo_android;
+static int
+_get_tbm_flags_from_android(int android_flags)
+{
+	return _get_match(android_tizen_flags_map, ANDROID_TIZEN_FLAGS_MAP_SIZE, android_flags, 1);
+}
 
-
-/* tbm buffer object for android */
-struct _tbm_bo_android {
-	buffer_handle_t handler;
-	int width;
-	int height;
-	void *pBase;          /* virtual address */
-	unsigned int map_cnt;
-	unsigned int flags_tbm;
-	uint32_t size;
-};
-
-/* tbm bufmgr private for android */
-struct _tbm_bufmgr_android {
-	gralloc_module_t *gralloc_module;
-	alloc_device_t *alloc_dev;
-};
+static int
+_get_android_flags_from_tbm(int tbm_flags)
+{
+	return _get_match(android_tizen_flags_map, ANDROID_TIZEN_FLAGS_MAP_SIZE, tbm_flags, 0);
+}
 
 /**
  * @brief get the data of the surface.
@@ -205,7 +265,7 @@ _android_bo_handle(tbm_bufmgr_android bufmgr_android, tbm_bo_android bo_android,
 {
 	int ret, usage;
 	tbm_bo_handle bo_handle;
-	gralloc_module_t *gralloc_module;
+	const gralloc_module_t *gralloc_module;
 
 	gralloc_module = bufmgr_android->gralloc_module;
 	ANDROID_RETURN_VAL_IF_FAIL(gralloc_module != NULL, (tbm_bo_handle) NULL);
@@ -223,8 +283,8 @@ _android_bo_handle(tbm_bufmgr_android bufmgr_android, tbm_bo_android bo_android,
 
 			usage = GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_OFTEN;
 
-			ret = gralloc_module->lock((gralloc_module_t const *) gralloc_module,
-					bo_android->handler, usage, 0, 0, bo_android->width,
+			ret = gralloc_module->lock(gralloc_module, bo_android->handler,
+					usage, 0, 0, bo_android->width,
 					bo_android->height, &map);
 			if (ret || !map) {
 				TBM_ANDROID_LOG("error(%s:%d): Cannot lock buffer\n",
@@ -247,74 +307,7 @@ _android_bo_handle(tbm_bufmgr_android bufmgr_android, tbm_bo_android bo_android,
 	return bo_handle;
 }
 
-/* At this stage, we use formats that have a full match with Android formats.
- * In the future, we need to increase the number of matching formats.*/
-static int
-_get_android_format_from_tbm(unsigned int tbm_format)
-{
-	int android_format = 0;
-
-	switch (tbm_format) {
-	case TBM_FORMAT_RGBA8888:
-		android_format = HAL_PIXEL_FORMAT_RGBA_8888;
-		break;
-	case TBM_FORMAT_RGBX8888:
-		android_format = HAL_PIXEL_FORMAT_RGBX_8888;
-		break;
-	case TBM_FORMAT_RGB888:
-		android_format = HAL_PIXEL_FORMAT_RGB_888;
-		break;
-	case TBM_FORMAT_RGB565:
-		android_format = HAL_PIXEL_FORMAT_RGB_565;
-		break;
-	case TBM_FORMAT_BGRA8888:
-		android_format = HAL_PIXEL_FORMAT_BGRA_8888;
-		break;
-	case TBM_FORMAT_RGBA4444:
-		android_format = HAL_PIXEL_FORMAT_RGBA_4444;
-		break;
-	}
-
-	return android_format;
-}
-
-/*
- * TODO: think whether we able to create some 'flags match table'
- */
-static int
-_get_tbm_flags_from_android(int android_flags)
-{
-	int tbm_flags = -1;
-
-	if (android_flags == (GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_OFTEN))
-		tbm_flags = TBM_BO_DEFAULT;
-	else if (android_flags == (GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_PRIVATE_NONECACHE))
-		tbm_flags = TBM_BO_SCANOUT;
-
-	return tbm_flags;
-}
-
-/* For the TBM_BO_SCANOUT flag we use the additional flag
- * GRALLOC_USAGE_HW_COMPOSER, because the buffer will be used by the
- * Hardware Composer.*/
-static int
-_get_android_flags_from_tbm(int tbm_flags)
-{
-	int android_flags = -1;
-
-	/* TODO: while TBM_BO_DEFAULT equals 0(zero) it's useless to use logical operations
-	 * I'm a little bit confused..., maybe TBM_BO_DEFAULT must be 1 << 0 ?
-	 * So, at least now, we'll use equal operator instead logical OR operator
-	 * I think we must allow a read operation for the default bo. */
-	if (tbm_flags == TBM_BO_DEFAULT)
-		android_flags = GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_OFTEN;
-	else if (tbm_flags == TBM_BO_SCANOUT)
-		android_flags = GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_PRIVATE_NONECACHE;
-
-	return android_flags;
-}
-
-void *
+static void *
 tbm_android_surface_bo_alloc(tbm_bo bo, int width, int height, int tbm_format,
 							 int tbm_flags, int bo_idx)
 {
@@ -342,7 +335,18 @@ tbm_android_surface_bo_alloc(tbm_bo bo, int width, int height, int tbm_format,
 	}
 
 	android_flags  = _get_android_flags_from_tbm(tbm_flags);
+	if (android_flags < 0) {
+		TBM_ANDROID_LOG("error: this tbm(%d) -> android flag match isn't supported!", tbm_flags);
+		free(bo_android);
+		return 0;
+	}
+
 	android_format = _get_android_format_from_tbm(tbm_format);
+	if (android_format < 0) {
+		TBM_ANDROID_LOG("error: this tbm(%d) -> android format match isn't supported!", tbm_format);
+		free(bo_android);
+		return 0;
+	}
 
 	ret = alloc_dev->alloc(alloc_dev, width, height, android_format,
 			android_flags, &handler, &stride);
@@ -414,6 +418,11 @@ tbm_android_import(tbm_bo bo, const void *native)
 	android_format = native_handle->data[native_handle->numFds + 7];
 
 	tbm_flags  = _get_tbm_flags_from_android(android_flags);
+	if (tbm_flags < 0) {
+		TBM_ANDROID_LOG("error: this android(%d) -> tbm flag match isn't supported!", android_flags);
+		free(bo_android);
+		return 0;
+	}
 
 	ret = _tbm_android_surface_get_data(width, height, android_format, &size, NULL);
 	if (!ret) {
@@ -538,7 +547,7 @@ tbm_android_bo_unmap(tbm_bo bo)
 	int ret;
 	tbm_bo_android bo_android;
 	tbm_bufmgr_android bufmgr_android;
-	gralloc_module_t *gralloc_module;
+	const gralloc_module_t *gralloc_module;
 
 	bufmgr_android = (tbm_bufmgr_android)tbm_backend_get_bufmgr_priv(bo);
 	ANDROID_RETURN_VAL_IF_FAIL(bufmgr_android != NULL, 0);
@@ -560,8 +569,7 @@ tbm_android_bo_unmap(tbm_bo bo)
 	if (bo_android->map_cnt)
 		return 1;
 
-	ret = gralloc_module->unlock((gralloc_module_t const*) gralloc_module,
-								  bo_android->handler);
+	ret = gralloc_module->unlock(gralloc_module, bo_android->handler);
 	if (ret) {
 		TBM_ANDROID_LOG("error(%s:%d): Cannot unlock buffer\n",
 										__func__, __LINE__);
@@ -570,18 +578,6 @@ tbm_android_bo_unmap(tbm_bo bo)
 
 	bo_android->pBase = NULL;
 
-	return 1;
-}
-
-static int
-tbm_android_bo_lock(tbm_bo bo, int device, int opt)
-{
-	return 1;
-}
-
-static int
-tbm_android_bo_unlock(tbm_bo bo)
-{
 	return 1;
 }
 
@@ -599,25 +595,26 @@ tbm_android_bufmgr_deinit(void *priv)
 	free(bufmgr_android);
 }
 
-int
+static int
 tbm_android_surface_supported_format(uint32_t **formats, uint32_t *num)
 {
 	uint32_t *color_formats = NULL;
+	int i;
 
 	ANDROID_RETURN_VAL_IF_FAIL(formats != NULL, 0);
 	ANDROID_RETURN_VAL_IF_FAIL(num != NULL, 0);
 
-	color_formats = (uint32_t *)calloc(TBM_COLOR_FORMAT_COUNT,
+	color_formats = (uint32_t *)calloc(ANDROID_TIZEN_FORMATS_MAP_SIZE,
 									   sizeof(uint32_t));
 
 	if (color_formats == NULL)
 		return 0;
 
-	memcpy(color_formats, tbm_android_color_format_list,
-		   sizeof(uint32_t) * TBM_COLOR_FORMAT_COUNT);
+	for (i = 0; i < ANDROID_TIZEN_FORMATS_MAP_SIZE; i++)
+		color_formats[i] = android_tizen_formats_map[i][1];
 
 	*formats = color_formats;
-	*num = TBM_COLOR_FORMAT_COUNT;
+	*num = ANDROID_TIZEN_FORMATS_MAP_SIZE;
 
 	return 1;
 }
@@ -634,7 +631,7 @@ tbm_android_surface_supported_format(uint32_t **formats, uint32_t *num)
  * @param[out] padding : the padding of the plane
  * @return 1 if this function succeeds, otherwise 0.
  */
-int
+static int
 tbm_android_surface_get_plane_data(int width, int height,
 				  tbm_format tbm_format, int plane_idx, uint32_t *size, uint32_t *offset,
 				  uint32_t *pitch, int *bo_idx)
@@ -650,12 +647,17 @@ tbm_android_surface_get_plane_data(int width, int height,
 	}
 
 	android_format = _get_android_format_from_tbm(tbm_format);
+	if (android_format < 0) {
+		TBM_ANDROID_LOG("error: this tbm(%d) -> android format match isn't supported!", tbm_format);
+		return 0;
+	}
+
 	ret = _tbm_android_surface_get_data(width, height, android_format, size, pitch);
 
 	return ret;
 }
 
-int
+static int
 tbm_android_bo_get_flags(tbm_bo bo)
 {
 	tbm_bo_android bo_android;
@@ -668,23 +670,7 @@ tbm_android_bo_get_flags(tbm_bo bo)
 	return bo_android->flags_tbm;
 }
 
-int
-tbm_android_bufmgr_bind_native_display(tbm_bufmgr bufmgr, void *native_display)
-{
-	return 1;
-}
-
-MODULEINITPPROTO(init_tbm_bufmgr_priv);
-
-static TBMModuleVersionInfo AndroidVersRec = {
-	"android",
-	"Samsung",
-	TBM_ABI_VERSION,
-};
-
-TBMModuleData tbmModuleData = { &AndroidVersRec, init_tbm_bufmgr_priv };
-
-int
+static int
 init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 {
 	int ret;
@@ -705,64 +691,81 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 					  (const hw_module_t **)&bufmgr_android->gralloc_module);
 	if (ret || !bufmgr_android->gralloc_module) {
 		TBM_ANDROID_LOG("error: Cannot get gralloc hardware module!\n");
-		free(bufmgr_android);
-		return 0;
+		goto fail_1;
 	}
 
 	ret =
 		gralloc_open((const hw_module_t *)bufmgr_android->gralloc_module,
 					 &bufmgr_android->alloc_dev);
 	if (ret || !&bufmgr_android->alloc_dev) {
-		printf("error: Cannot open the gralloc\n");
-		free(bufmgr_android);
-		return 0;
+		TBM_ANDROID_LOG("error: Cannot open the gralloc!\n");
+		goto fail_1;
 	}
 
 	bufmgr_backend = tbm_backend_alloc();
 	if (!bufmgr_backend) {
 		TBM_ANDROID_LOG("error: Fail to create android backend!\n");
-
-		gralloc_close(bufmgr_android->alloc_dev);
-
-		free(bufmgr_android);
-		return 0;
+		goto fail_2;
 	}
 
+	bufmgr_backend->flags = 0;
 	bufmgr_backend->priv = (void *)bufmgr_android;
 	bufmgr_backend->bufmgr_deinit = tbm_android_bufmgr_deinit;
 	bufmgr_backend->bo_size = tbm_android_bo_size;
+
+	/* we don't implement bo_alloc due to restriction of underlying
+	 * functionality (gralloc). Gralloc doesn't allow to allocate bo without
+	 * the specification of the buffer's height and width.*/
+	bufmgr_backend->bo_alloc = NULL;
 	bufmgr_backend->bo_free = tbm_android_bo_free;
+
+	/* Android doesn't provide ability to share buffer across key */
+	bufmgr_backend->bo_import = NULL;
+	bufmgr_backend->bo_export = NULL;
+
 	bufmgr_backend->bo_get_handle = tbm_android_bo_get_handle;
 	bufmgr_backend->bo_map = tbm_android_bo_map;
 	bufmgr_backend->bo_unmap = tbm_android_bo_unmap;
-	bufmgr_backend->surface_get_plane_data = tbm_android_surface_get_plane_data;
+
+	/* Android provides an itself lock/unlock mechanism, look at tbm_android_bo_map */
+	bufmgr_backend->bo_unlock = NULL;
+	bufmgr_backend->bo_lock = NULL;
+
 	bufmgr_backend->surface_supported_format =
 										tbm_android_surface_supported_format;
-	bufmgr_backend->bo_get_flags = tbm_android_bo_get_flags;
-	bufmgr_backend->bo_lock = tbm_android_bo_lock;
-	bufmgr_backend->bo_unlock = tbm_android_bo_unlock;
-	/* we don't implement bo_alloc due to restriction of underlying
-	 * functionality (gralloc). Gralloc not allow to allocate bo is not
-	 * knowing the height and width of the buffer.*/
-	bufmgr_backend->surface_bo_alloc = tbm_android_surface_bo_alloc;
+	bufmgr_backend->surface_get_plane_data = tbm_android_surface_get_plane_data;
 
+	/* Android doesn't provide ability to share buffer across fd */
+	bufmgr_backend->bo_import_fd = NULL;
+	bufmgr_backend->bo_export_fd = NULL;
+
+	bufmgr_backend->bo_get_flags = tbm_android_bo_get_flags;
+	bufmgr_backend->bufmgr_bind_native_display = NULL;
+	bufmgr_backend->surface_bo_alloc = tbm_android_surface_bo_alloc;
 	bufmgr_backend->bo_import_ = tbm_android_import;
 	bufmgr_backend->bo_export_ = tbm_android_export;
-/*	if (tbm_backend_is_display_server() && !_check_render_node()) {
-		bufmgr_backend->bufmgr_bind_native_display = tbm_android_bufmgr_bind_native_display;
-	}
-*/
+
 	if (!tbm_backend_init(bufmgr, bufmgr_backend)) {
 		TBM_ANDROID_LOG("error: Fail to init backend!\n");
 		tbm_backend_free(bufmgr_backend);
 
-		gralloc_close(bufmgr_android->alloc_dev);
-
-		free(bufmgr_android);
-		return 0;
+		goto fail_2;
 	}
 
 	return 1;
+
+fail_2:
+	gralloc_close(bufmgr_android->alloc_dev);
+fail_1:
+	free(bufmgr_android);
+
+	return 0;
 }
 
+static const TBMModuleVersionInfo android_vers = {
+	"tbm-android",
+	"Samsung",
+	TBM_ABI_VERSION
+};
 
+const TBMModuleData tbmModuleData = { (TBMModuleVersionInfo *)&android_vers, init_tbm_bufmgr_priv };
