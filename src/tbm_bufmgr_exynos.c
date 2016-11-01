@@ -2116,8 +2116,9 @@ TBMModuleData tbmModuleData = { &ExynosVersRec, init_tbm_bufmgr_priv};
 int
 init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 {
-	tbm_bufmgr_exynos bufmgr_exynos;
 	tbm_bufmgr_backend bufmgr_backend;
+	tbm_bufmgr_exynos bufmgr_exynos;
+	int fp;
 
 	if (!bufmgr)
 		return 0;
@@ -2129,55 +2130,45 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	}
 
 	if (tbm_backend_is_display_server()) {
-		bufmgr_exynos->fd = -1;
-
 		bufmgr_exynos->fd = tbm_drm_helper_get_master_fd();
-		if (bufmgr_exynos->fd < 0)
-			bufmgr_exynos->fd = _tbm_exynos_open_drm();
-
 		if (bufmgr_exynos->fd < 0) {
-			TBM_EXYNOS_LOG("[libtbm-exynos:%d] error: Fail to create drm!\n", getpid());
-			free(bufmgr_exynos);
-			return 0;
+			bufmgr_exynos->fd = _tbm_exynos_open_drm();
+			if (bufmgr_exynos->fd < 0) {
+				TBM_EXYNOS_LOG("[libtbm-exynos:%d] error: Fail to open drm!\n", getpid());
+				goto fail_open_drm;
+			}
 		}
 
 		tbm_drm_helper_set_tbm_master_fd(bufmgr_exynos->fd);
 
 		bufmgr_exynos->device_name = drmGetDeviceNameFromFd(bufmgr_exynos->fd);
-
 		if (!bufmgr_exynos->device_name) {
 			TBM_EXYNOS_LOG("[libtbm-exynos:%d] error: Fail to get device name!\n", getpid());
 
 			tbm_drm_helper_unset_tbm_master_fd();
-			close(bufmgr_exynos->fd);
-			free(bufmgr_exynos);
-			return 0;
+			goto fail_get_device_name;
 		}
-
 	} else {
 		if (_check_render_node()) {
 			bufmgr_exynos->fd = _get_render_node();
 			if (bufmgr_exynos->fd < 0) {
 				TBM_EXYNOS_LOG("[%s] get render node failed\n", target_name(), fd);
-				free(bufmgr_exynos);
-				return 0;
+				goto fail_get_render_node;
 			}
 			DBG("[%s] Use render node:%d\n", target_name(), bufmgr_exynos->fd);
 		} else {
 			if (!tbm_drm_helper_get_auth_info(&(bufmgr_exynos->fd), &(bufmgr_exynos->device_name), NULL)) {
 				TBM_EXYNOS_LOG("[libtbm-exynos:%d] error: Fail to get auth drm info!\n", getpid());
-				free(bufmgr_exynos);
-				return 0;
+				goto fail_get_auth_info;
 			}
 		}
 	}
 
 	//Check if the tbm manager supports dma fence or not.
-	int fp = open("/sys/module/dmabuf_sync/parameters/enabled", O_RDONLY);
-	int length;
-	char buf[1];
+	fp = open("/sys/module/dmabuf_sync/parameters/enabled", O_RDONLY);
 	if (fp != -1) {
-		length = read(fp, buf, 1);
+		char buf[1];
+		int length = read(fp, buf, 1);
 
 		if (length == 1 && buf[0] == '1')
 			bufmgr_exynos->use_dma_fence = 1;
@@ -2186,15 +2177,8 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	}
 
 	if (!_bufmgr_init_cache_state(bufmgr_exynos)) {
-		TBM_EXYNOS_LOG("[libtbm-exynos:%d] error: init bufmgr cache state failed!\n", getpid());
-
-		if (tbm_backend_is_display_server())
-			tbm_drm_helper_unset_tbm_master_fd();
-
-		close(bufmgr_exynos->fd);
-
-		free(bufmgr_exynos);
-		return 0;
+		TBM_EXYNOS_LOG("[libtbm-exynos:%d] error: Fail to init bufmgr cache state\n", getpid());
+		goto fail_init_cache_state;
 	}
 
 	/*Create Hash Table*/
@@ -2202,19 +2186,8 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 
 	bufmgr_backend = tbm_backend_alloc();
 	if (!bufmgr_backend) {
-		TBM_EXYNOS_LOG("error: Fail to create drm!\n");
-		if (bufmgr_exynos->hashBos)
-			drmHashDestroy(bufmgr_exynos->hashBos);
-
-		_bufmgr_deinit_cache_state(bufmgr_exynos);
-
-		if (tbm_backend_is_display_server())
-			tbm_drm_helper_unset_tbm_master_fd();
-
-		close(bufmgr_exynos->fd);
-
-		free(bufmgr_exynos);
-		return 0;
+		TBM_EXYNOS_LOG("error: Fail to alloc backend!\n");
+		goto fail_alloc_backend;
 	}
 
 	bufmgr_backend->priv = (void *)bufmgr_exynos;
@@ -2240,17 +2213,7 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 
 	if (!tbm_backend_init(bufmgr, bufmgr_backend)) {
 		TBM_EXYNOS_LOG("error: Fail to init backend!\n");
-		tbm_backend_free(bufmgr_backend);
-
-		_bufmgr_deinit_cache_state(bufmgr_exynos);
-
-		if (tbm_backend_is_display_server())
-			tbm_drm_helper_unset_tbm_master_fd();
-
-		close(bufmgr_exynos->fd);
-
-		free(bufmgr_exynos);
-		return 0;
+		goto fail_init_backend;
 	}
 
 #ifdef DEBUG
@@ -2261,16 +2224,30 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 		if (env) {
 			bDebug = atoi(env);
 			TBM_EXYNOS_LOG("TBM_EXYNOS_DEBUG=%s\n", env);
-		} else {
+		} else
 			bDebug = 0;
-		}
 	}
 #endif
 
-	DBG("[%s] drm_fd:%d\n", target_name(),
-	    bufmgr_exynos->fd);
+	DBG("[%s] drm_fd:%d\n", target_name(), bufmgr_exynos->fd);
 
 	return 1;
-}
 
+fail_init_backend:
+	tbm_backend_free(bufmgr_backend);
+fail_alloc_backend:
+	if (bufmgr_exynos->hashBos)
+		drmHashDestroy(bufmgr_exynos->hashBos);
+	_bufmgr_deinit_cache_state(bufmgr_exynos);
+fail_init_cache_state:
+	if (tbm_backend_is_display_server())
+		tbm_drm_helper_unset_tbm_master_fd();
+fail_get_device_name:
+	close(bufmgr_exynos->fd);
+fail_get_auth_info:
+fail_get_render_node:
+fail_open_drm:
+	free(bufmgr_exynos);
+	return 0;
+}
 
