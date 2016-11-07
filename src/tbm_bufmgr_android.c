@@ -73,9 +73,7 @@ static char *_target_name(void);
  * At this stage, we use formats that have a full match with Android formats.
  * In the future, we need to increase the number of matching formats.*/
 
-#define ANDROID_TIZEN_FORMATS_MAP_SIZE 6
-
-static const uint32_t android_tizen_formats_map[ANDROID_TIZEN_FORMATS_MAP_SIZE][2] =
+static const uint32_t android_tizen_formats_map[][2] =
 {
 	{ HAL_PIXEL_FORMAT_RGBA_8888, TBM_FORMAT_RGBA8888 },
 	{ HAL_PIXEL_FORMAT_RGBX_8888, TBM_FORMAT_RGBX8888 },
@@ -85,6 +83,9 @@ static const uint32_t android_tizen_formats_map[ANDROID_TIZEN_FORMATS_MAP_SIZE][
 	{ HAL_PIXEL_FORMAT_RGBA_4444, TBM_FORMAT_RGBA4444 }
 };
 
+/* amount of map rows */
+#define ANDROID_TIZEN_FORMATS_MAP_ROWS_CNT sizeof(android_tizen_formats_map)/sizeof(uint32_t)/2
+
 /*
  * Android to Tizen flags map. (and vice versa)
  *
@@ -93,15 +94,15 @@ static const uint32_t android_tizen_formats_map[ANDROID_TIZEN_FORMATS_MAP_SIZE][
  * Hardware Composer.
  */
 
-#define ANDROID_TIZEN_FLAGS_MAP_SIZE 2
-
-static const uint32_t android_tizen_flags_map[ANDROID_TIZEN_FLAGS_MAP_SIZE][2] =
+static const uint32_t android_tizen_flags_map[][2] =
 {
 	{ GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_OFTEN, TBM_BO_DEFAULT },
 	{ GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN |
 			GRALLOC_USAGE_PRIVATE_NONECACHE, TBM_BO_SCANOUT }
 };
 
+/* amount of map rows */
+#define ANDROID_TIZEN_FLAGS_MAP_ROWS_CNT sizeof(android_tizen_flags_map)/sizeof(uint32_t)/2
 
 typedef struct _tbm_bufmgr_android *tbm_bufmgr_android;
 typedef struct _tbm_bo_android *tbm_bo_android;
@@ -185,19 +186,19 @@ _get_match(const uint32_t map[][2], uint32_t row_amount, uint32_t value, int dir
 static int
 _get_android_format_from_tbm(unsigned int tbm_format)
 {
-	return _get_match(android_tizen_formats_map, ANDROID_TIZEN_FORMATS_MAP_SIZE, tbm_format, 0);
+	return _get_match(android_tizen_formats_map, ANDROID_TIZEN_FORMATS_MAP_ROWS_CNT, tbm_format, 0);
 }
 
 static int
 _get_tbm_flags_from_android(int android_flags)
 {
-	return _get_match(android_tizen_flags_map, ANDROID_TIZEN_FLAGS_MAP_SIZE, android_flags, 1);
+	return _get_match(android_tizen_flags_map, ANDROID_TIZEN_FLAGS_MAP_ROWS_CNT, android_flags, 1);
 }
 
 static int
 _get_android_flags_from_tbm(int tbm_flags)
 {
-	return _get_match(android_tizen_flags_map, ANDROID_TIZEN_FLAGS_MAP_SIZE, tbm_flags, 0);
+	return _get_match(android_tizen_flags_map, ANDROID_TIZEN_FLAGS_MAP_ROWS_CNT, tbm_flags, 0);
 }
 
 /**
@@ -604,17 +605,17 @@ tbm_android_surface_supported_format(uint32_t **formats, uint32_t *num)
 	ANDROID_RETURN_VAL_IF_FAIL(formats != NULL, 0);
 	ANDROID_RETURN_VAL_IF_FAIL(num != NULL, 0);
 
-	color_formats = (uint32_t *)calloc(ANDROID_TIZEN_FORMATS_MAP_SIZE,
+	color_formats = (uint32_t *)calloc(ANDROID_TIZEN_FORMATS_MAP_ROWS_CNT,
 									   sizeof(uint32_t));
 
 	if (color_formats == NULL)
 		return 0;
 
-	for (i = 0; i < ANDROID_TIZEN_FORMATS_MAP_SIZE; i++)
+	for (i = 0; i < ANDROID_TIZEN_FORMATS_MAP_ROWS_CNT; i++)
 		color_formats[i] = android_tizen_formats_map[i][1];
 
 	*formats = color_formats;
-	*num = ANDROID_TIZEN_FORMATS_MAP_SIZE;
+	*num = ANDROID_TIZEN_FORMATS_MAP_ROWS_CNT;
 
 	return 1;
 }
