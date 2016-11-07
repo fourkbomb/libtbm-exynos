@@ -39,6 +39,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <tbm_bufmgr_backend.h>
 #include <tbm_surface.h>
 #include <dlog/dlog.h>
+#include <dlfcn.h>
 
 #include <hardware/hardware.h>
 #include <hardware/gralloc.h>
@@ -97,8 +98,12 @@ static const uint32_t android_tizen_formats_map[][2] =
 static const uint32_t android_tizen_flags_map[][2] =
 {
 	{ GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_OFTEN, TBM_BO_DEFAULT },
+#ifdef QCOM_BSP
+	{ GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN, TBM_BO_SCANOUT }
+#else
 	{ GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN |
-			GRALLOC_USAGE_PRIVATE_NONECACHE, TBM_BO_SCANOUT }
+				GRALLOC_USAGE_PRIVATE_NONECACHE, TBM_BO_SCANOUT }
+#endif
 };
 
 /* amount of map rows */
@@ -160,6 +165,14 @@ _target_name(void)
 	return app_name;
 }
 
+#ifdef QCOM_BSP
+	/* link to the surface padding library. */
+	int (*link_adreno_compute_padding)(int width, int bpp,
+									   int surface_tile_height,
+									   int screen_tile_height,
+									   int padding_threshold);
+#endif
+
 /* @brief This function can be used to get the match for a @c value from the @c map table.
  *
  * @param[in]: map - the map to find the match in.
@@ -220,6 +233,14 @@ _tbm_android_surface_get_data(int width, int height, int android_format,
 	/* bpp is bytes per pixel */
 	size_t bpr;
 	int bpp, vstride;
+#ifdef QCOM_BSP
+	void *libadreno_utils; /* Pointer to the padding library.*/
+	int surface_tile_height = 1;   /* Linear surface */
+	int raster_mode         = 0;   /* Adreno unknown raster mode. */
+	int padding_threshold   = 512; /* Threshold for padding surfaces. */
+	uint32_t alignedw = 0;
+	uint32_t alignedh = 0;
+#endif
 
 	uint32_t _size = 0;
 
@@ -239,6 +260,34 @@ _tbm_android_surface_get_data(int width, int height, int android_format,
 	default:
 		return 0;
 	}
+
+#ifdef QCOM_BSP
+	alignedw = ALIGN(width, 32);
+	alignedh = ALIGN(height, 32);
+	libadreno_utils = dlopen("libadreno_utils.so", RTLD_NOW);
+	if (libadreno_utils) {
+		*(void **)&link_adreno_compute_padding = dlsym(libadreno_utils,
+										   "compute_surface_padding");
+	}
+	if ((libadreno_utils) && (link_adreno_compute_padding)) {
+		// the function below expects the width to be a multiple of
+		// 32 pixels, hence we pass stride instead of width.
+		alignedw = link_adreno_compute_padding(alignedw, bpp,
+											   surface_tile_height, raster_mode,
+											   padding_threshold);
+	}
+	_size = alignedw * alignedh * bpp;
+
+	if (size) {
+		*size = _size;
+	}
+
+	if (pitch) {
+		*pitch = alignedw * bpp;
+	}
+
+	return 1;
+#endif
 
 	/* bpr is bytes per row */
 	bpr = ALIGN(width*bpp, 64);
@@ -413,10 +462,20 @@ tbm_android_import(tbm_bo bo, const void *native)
 	 * data[numFds + 6] = height
 	 * data[numFds + 7] = format
 	 */
+#ifdef QCOM_BSP
+	/*
+	 * TODO: must find some way of getting android_flags
+	 */
+	android_flags = GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN;
+	width = native_handle->data[native_handle->numFds + 9];
+	height = native_handle->data[native_handle->numFds + 10];
+	android_format = native_handle->data[native_handle->numFds + 8];
+#else
 	android_flags = native_handle->data[native_handle->numFds + 4];
 	width = native_handle->data[native_handle->numFds + 5];
 	height = native_handle->data[native_handle->numFds + 6];
 	android_format = native_handle->data[native_handle->numFds + 7];
+#endif
 
 	tbm_flags  = _get_tbm_flags_from_android(android_flags);
 	if (tbm_flags < 0) {
