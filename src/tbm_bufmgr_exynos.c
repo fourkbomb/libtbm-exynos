@@ -288,7 +288,7 @@ _tgl_init(int fd, unsigned int key)
 	err = ioctl(fd, TGL_IOC_INIT_LOCK, &attr);
 	if (err) {
 		TBM_EXYNOS_LOG("[libtbm:%d] "
-			       "error(%s) %s:%d key:%d\n",
+			       "warning(%s) %s:%d key:%d\n",
 			       getpid(), strerror(errno), __func__, __LINE__, key);
 		return 0;
 	}
@@ -304,7 +304,7 @@ _tgl_destroy(int fd, unsigned int key)
 	err = ioctl(fd, TGL_IOC_DESTROY_LOCK, key);
 	if (err) {
 		TBM_EXYNOS_LOG("[libtbm:%d] "
-			       "error(%s) %s:%d key:%d\n",
+			       "warning(%s) %s:%d key:%d\n",
 			       getpid(), strerror(errno), __func__, __LINE__, key);
 		return 0;
 	}
@@ -323,7 +323,7 @@ _tgl_set_data(int fd, unsigned int key, unsigned int val)
 	err = ioctl(fd, TGL_IOC_SET_DATA, &arg);
 	if (err) {
 		TBM_EXYNOS_LOG("[libtbm:%d] "
-			       "error(%s) %s:%d key:%d\n",
+			       "warning(%s) %s:%d key:%d\n",
 			       getpid(), strerror(errno), __func__, __LINE__, key);
 		return 0;
 	}
@@ -341,7 +341,7 @@ _tgl_get_data(int fd, unsigned int key)
 	err = ioctl(fd, TGL_IOC_GET_DATA, &arg);
 	if (err) {
 		TBM_EXYNOS_LOG("[libtbm:%d] "
-			       "error(%s) %s:%d key:%d\n",
+			       "warning(%s) %s:%d key:%d\n",
 			       getpid(), strerror(errno), __func__, __LINE__, key);
 		return 0;
 	}
@@ -393,7 +393,7 @@ _exynos_cache_flush(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, in
 	ret = drmCommandWriteRead(bufmgr_exynos->fd, DRM_EXYNOS_GEM_CACHE_OP, &cache_op,
 				  sizeof(cache_op));
 	if (ret) {
-		TBM_EXYNOS_LOG("error fail to flush the cache.\n");
+		TBM_EXYNOS_LOG("warning fail to flush the cache.\n");
 		return 0;
 	}
 
@@ -549,7 +549,7 @@ _bufmgr_init_cache_state(tbm_bufmgr_exynos bufmgr_exynos)
 		bufmgr_exynos->tgl_fd = open(tgl_devfile1, O_RDWR);
 		if (bufmgr_exynos->tgl_fd < 0) {
 			TBM_EXYNOS_LOG("[libtbm-exynos:%d] "
-				       "error: Fail to open global_lock:%s\n",
+				       "warning: Fail to open global_lock:%s\n",
 				       getpid(), tgl_devfile);
 			return 0;
 		}
@@ -557,7 +557,7 @@ _bufmgr_init_cache_state(tbm_bufmgr_exynos bufmgr_exynos)
 
 	if (!_tgl_init(bufmgr_exynos->tgl_fd, GLOBAL_KEY)) {
 		TBM_EXYNOS_LOG("[libtbm-exynos:%d] "
-			       "error: Fail to initialize the tgl\n",
+			       "warning: Fail to initialize the tgl\n",
 			       getpid());
 
 		close(bufmgr_exynos->tgl_fd);
