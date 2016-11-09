@@ -38,28 +38,96 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <tbm_bufmgr_backend.h>
 #include <tbm_surface.h>
-#include <dlog/dlog.h>
 #include <dlfcn.h>
 
 #include <hardware/hardware.h>
 #include <hardware/gralloc.h>
 
-static char *_target_name(void);
+#define DEBUG
+#ifdef DEBUG
+int bDebug = 0;
 
-#define TBM_ANDROID_LOG(fmt, args...) LOGE("\033[31m"  "[%s]" fmt "\033[0m",\
-										   _target_name(), ##args)
+#define DBG(...) { if (bDebug) TBM_LOG_D(__VA_ARGS__); }
+#else
+#define DBG(...)
+#endif /* DEBUG */
+
+#ifdef HAVE_DLOG
+#include <dlog/dlog.h>
+
+int bDlog;
+
+#ifdef LOG_TAG
+#undef LOG_TAG
+#endif
+
+#define LOG_TAG "TBM_BACKEND"
+
+#define TBM_LOG_D(fmt, ...) {\
+	if (bDlog) {\
+		LOGD(fmt "\n", ##__VA_ARGS__);\
+	} \
+	else {\
+		fprintf(stderr, "[TBM_BACKEND_DBG](%d)(%s:%d) " fmt "\n", getpid(), \
+				__func__, __LINE__, ##__VA_ARGS__);\
+	} \
+}
+
+#define TBM_LOG_I(fmt, ...) {\
+	if (bDlog) {\
+		LOGI(fmt "\n", ##__VA_ARGS__);\
+	} \
+	else {\
+		fprintf(stderr, "\x1b[32m[TBM_BACKEND_INF]\x1b[0m(%d)(%s:%d) " fmt "\n", \
+				getpid(), __func__, __LINE__, ##__VA_ARGS__);\
+	} \
+}
+
+#define TBM_LOG_W(fmt, ...) {\
+	if (bDlog) {\
+		LOGW(fmt "\n", ##__VA_ARGS__);\
+	} \
+	else {\
+		fprintf(stderr, "\x1b[33m[TBM_BACKEND_WRN]\x1b[0m(%d)(%s:%d) " fmt "\n", \
+				getpid(), __func__, __LINE__, ##__VA_ARGS__);\
+	} \
+}
+
+#define TBM_LOG_E(fmt, ...) {\
+	if (bDlog) {\
+		LOGE(fmt "\n", ##__VA_ARGS__);\
+	} \
+	else {\
+		fprintf(stderr, "\x1b[31m[TBM_BACKEND_ERR]\x1b[0m(%d)(%s:%d) " fmt "\n", \
+				getpid(), __func__, __LINE__, ##__VA_ARGS__);\
+	} \
+}
+#else
+#define TBM_LOG_D(fmt, ...)   fprintf(stderr, "[TBM_BACKEND_DBG](%d)(%s:%d) " \
+									  fmt "\n", getpid(), __func__, __LINE__, \
+									  ##__VA_ARGS__)
+#define TBM_LOG_I(fmt, ...)   fprintf(stderr, "\x1b[32m[TBM_BACKEND_INF]" \
+									  "\x1b[0m(%d)(%s:%d) " fmt "\n", getpid(), \
+									  __func__, __LINE__, ##__VA_ARGS__)
+#define TBM_LOG_W(fmt, ...)   fprintf(stderr, "\x1b[33m[TBM_BACKEND_WRN]" \
+									  "\x1b[0m(%d)(%s:%d) " fmt "\n", getpid(), \
+									  __func__, __LINE__, ##__VA_ARGS__)
+#define TBM_LOG_E(fmt, ...)   fprintf(stderr, "\x1b[31m[TBM_BACKEND_ERR]" \
+									  "\x1b[0m(%d)(%s:%d) " fmt "\n", getpid(), \
+									  __func__, __LINE__, ##__VA_ARGS__)
+#endif /* HAVE_DLOG */
 
 /* check condition */
 #define ANDROID_RETURN_IF_FAIL(cond) {\
 	if (!(cond)) {\
-		TBM_ANDROID_LOG("[%s] : '%s' failed.\n", __func__, #cond);\
+		TBM_LOG_E("[%s] : '%s' failed.", __func__, #cond);\
 		return;\
 	} \
 }
 
 #define ANDROID_RETURN_VAL_IF_FAIL(cond, val) {\
 	if (!(cond)) {\
-		TBM_ANDROID_LOG("[%s] : '%s' failed.\n", __func__, #cond);\
+		TBM_LOG_E("[%s] : '%s' failed.", __func__, #cond);\
 		return val;\
 	} \
 }
@@ -109,6 +177,21 @@ static const uint32_t android_tizen_flags_map[][2] =
 /* amount of map rows */
 #define ANDROID_TIZEN_FLAGS_MAP_ROWS_CNT sizeof(android_tizen_flags_map)/sizeof(uint32_t)/2
 
+char *STR_DEVICE[] = {
+	"DEF",
+	"CPU",
+	"2D",
+	"3D",
+	"MM"
+};
+
+char *STR_OPT[] = {
+	"NONE",
+	"RD",
+	"WR",
+	"RDWR"
+};
+
 typedef struct _tbm_bufmgr_android *tbm_bufmgr_android;
 typedef struct _tbm_bo_android *tbm_bo_android;
 
@@ -128,42 +211,6 @@ struct _tbm_bufmgr_android {
 	const gralloc_module_t *gralloc_module;
 	alloc_device_t *alloc_dev;
 };
-
-
-static char *
-_target_name(void)
-{
-	FILE *f;
-	char *slash;
-	static int initialized = 0;
-	static char app_name[128];
-
-	if (initialized)
-		return app_name;
-
-	/* get the application name */
-	f = fopen("/proc/self/cmdline", "r");
-
-	if (!f)
-		return 0;
-
-	memset(app_name, 0x00, sizeof(app_name));
-
-	if (fgets(app_name, 100, f) == NULL) {
-		fclose(f);
-		return 0;
-	}
-
-	fclose(f);
-
-	slash = strrchr(app_name, '/');
-	if (slash != NULL)
-		memmove(app_name, slash + 1, strlen(slash));
-
-	initialized = 1;
-
-	return app_name;
-}
 
 #ifdef QCOM_BSP
 	/* link to the surface padding library. */
@@ -286,6 +333,9 @@ _tbm_android_surface_get_data(int width, int height, int android_format,
 		*pitch = alignedw * bpp;
 	}
 
+	DBG("width:%d, height:%d,\n		android_format:%d,"
+		"size:%d, pitch:%d", width, height, android_format, _size, alignedw * bpp);
+
 	return 1;
 #endif
 
@@ -305,6 +355,9 @@ _tbm_android_surface_get_data(int width, int height, int android_format,
 	if (pitch) {
 		*pitch = bpr;
 	}
+
+	DBG("width:%d, height:%d, android_format:%d,\n		"
+		"size:%d, pitch:%d", width, height, android_format, _size, bpr);
 
 	return 1;
 }
@@ -326,6 +379,9 @@ _android_bo_handle(tbm_bufmgr_android bufmgr_android, tbm_bo_android bo_android,
 	case TBM_DEVICE_DEFAULT:
 	case TBM_DEVICE_2D:
 		bo_handle.u64 = (uintptr_t)bo_android->handler;
+
+		DBG("device:%s, bo_handle.u64:%p", STR_DEVICE[device], bo_android->handler);
+
 		break;
 	case TBM_DEVICE_CPU:
 		if (!bo_android->pBase) {
@@ -337,19 +393,21 @@ _android_bo_handle(tbm_bufmgr_android bufmgr_android, tbm_bo_android bo_android,
 					usage, 0, 0, bo_android->width,
 					bo_android->height, &map);
 			if (ret || !map) {
-				TBM_ANDROID_LOG("error(%s:%d): Cannot lock buffer\n",
-								__func__, __LINE__);
+				TBM_LOG_E("Cannot lock buffer");
 				return (tbm_bo_handle) NULL;
 			}
 
 			bo_android->pBase = map;
 		}
 		bo_handle.ptr = bo_android->pBase;
+
+		DBG("device:%s, bo_handle.ptr:%p", STR_DEVICE[device], bo_handle.ptr);
+
 		break;
 	case TBM_DEVICE_3D:
 	case TBM_DEVICE_MM:
 	default:
-		TBM_ANDROID_LOG("error: Not supported device:%d\n", device);
+		TBM_LOG_E("Not supported device:%s\n", STR_DEVICE[device]);
 		bo_handle.ptr = NULL;
 		break;
 	}
@@ -380,20 +438,20 @@ tbm_android_surface_bo_alloc(tbm_bo bo, int width, int height, int tbm_format,
 
 	bo_android = calloc(1, sizeof(struct _tbm_bo_android));
 	if (!bo_android) {
-		TBM_ANDROID_LOG("error: Fail to allocate the bo private\n");
+		TBM_LOG_E("Fail to allocate the bo private");
 		return 0;
 	}
 
 	android_flags  = _get_android_flags_from_tbm(tbm_flags);
 	if (android_flags < 0) {
-		TBM_ANDROID_LOG("error: this tbm(%d) -> android flag match isn't supported!", tbm_flags);
+		TBM_LOG_E("this tbm(%d) -> android flag match isn't supported!", tbm_flags);
 		free(bo_android);
 		return 0;
 	}
 
 	android_format = _get_android_format_from_tbm(tbm_format);
 	if (android_format < 0) {
-		TBM_ANDROID_LOG("error: this tbm(%d) -> android format match isn't supported!", tbm_format);
+		TBM_LOG_E("this tbm(%d) -> android format match isn't supported!", tbm_format);
 		free(bo_android);
 		return 0;
 	}
@@ -401,8 +459,8 @@ tbm_android_surface_bo_alloc(tbm_bo bo, int width, int height, int tbm_format,
 	ret = alloc_dev->alloc(alloc_dev, width, height, android_format,
 			android_flags, &handler, &stride);
 	if (ret) {
-		TBM_ANDROID_LOG
-			("error: Cannot allocate a buffer(%dx%d) in graphic memory\n",
+		TBM_LOG_E
+			("Cannot allocate a buffer(%dx%d) in graphic memory",
 			 width, height);
 		free(bo_android);
 		return 0;
@@ -410,8 +468,7 @@ tbm_android_surface_bo_alloc(tbm_bo bo, int width, int height, int tbm_format,
 
 	ret = _tbm_android_surface_get_data(width, height, android_format, &size, NULL);
 	if (!ret) {
-		TBM_ANDROID_LOG
-			("error: Cannot get surface data\n");
+		TBM_LOG_E("Cannot get surface data");
 		free(bo_android);
 		return 0;
 	}
@@ -421,6 +478,11 @@ tbm_android_surface_bo_alloc(tbm_bo bo, int width, int height, int tbm_format,
 	bo_android->height = height;
 	bo_android->flags_tbm = tbm_flags;
 	bo_android->size = size;
+
+	DBG("bo:%p, handler:%p, tbm_flags:%d, android_flags:%d,\n		"
+		"tbm_format:%d, android_format:%d, width:%d, height:%d, size:%d",
+		bo_android, handler, tbm_flags, android_flags,
+		tbm_format, android_format, width, height, size);
 
 	return (void *)bo_android;
 }
@@ -450,7 +512,7 @@ tbm_android_import(tbm_bo bo, const void *native)
 
 	bo_android = calloc(1, sizeof(struct _tbm_bo_android));
 	if (!bo_android) {
-		TBM_ANDROID_LOG("error bo:%p fail to allocate the bo private\n", bo);
+		TBM_LOG_E("bo:%p fail to allocate the bo private", bo);
 		return NULL;
 	}
 
@@ -479,14 +541,14 @@ tbm_android_import(tbm_bo bo, const void *native)
 
 	tbm_flags  = _get_tbm_flags_from_android(android_flags);
 	if (tbm_flags < 0) {
-		TBM_ANDROID_LOG("error: this android(%d) -> tbm flag match isn't supported!", android_flags);
+		TBM_LOG_E("this android(%d) -> tbm flag match isn't supported!", android_flags);
 		free(bo_android);
 		return 0;
 	}
 
 	ret = _tbm_android_surface_get_data(width, height, android_format, &size, NULL);
 	if (!ret) {
-		TBM_ANDROID_LOG("error: Cannot get surface data\n");
+		TBM_LOG_E("Cannot get surface data");
 		free(bo_android);
 		return 0;
 	}
@@ -496,6 +558,11 @@ tbm_android_import(tbm_bo bo, const void *native)
 	bo_android->height = height;
 	bo_android->flags_tbm = tbm_flags;
 	bo_android->size = size;
+
+	DBG("bo:%p, handler:%p, tbm_flags:%d, android_flags:%d,\n		"
+		"width:%d, height:%d, android_format:%d, size:%d",
+		bo_android, native_handle, tbm_flags, android_flags,
+		width, height, android_format, size);
 
 	return bo_android;
 }
@@ -510,6 +577,8 @@ tbm_android_export(tbm_bo bo)
 	bo_android = (tbm_bo_android)tbm_backend_get_bo_priv(bo);
 	ANDROID_RETURN_VAL_IF_FAIL(bo_android != NULL, NULL);
 
+	DBG("bo:%p, handler:%p", bo_android, bo_android->handler);
+
 	return bo_android->handler;
 }
 
@@ -522,6 +591,8 @@ tbm_android_bo_size(tbm_bo bo)
 
 	bo_android = (tbm_bo_android)tbm_backend_get_bo_priv(bo);
 	ANDROID_RETURN_VAL_IF_FAIL(bo_android != NULL, 0);
+
+	DBG("bo:%p, size:%d", bo_android, bo_android->size);
 
 	return bo_android->size;
 }
@@ -544,6 +615,8 @@ tbm_android_bo_free(tbm_bo bo)
 	bufmgr_android->alloc_dev->free(bufmgr_android->alloc_dev,
 									bo_android->handler);
 
+	DBG("bo:%p", bo_android);
+
 	free(bo_android);
 }
 
@@ -562,10 +635,13 @@ tbm_android_bo_get_handle(tbm_bo bo, int device)
 	bo_android = (tbm_bo_android)tbm_backend_get_bo_priv(bo);
 	ANDROID_RETURN_VAL_IF_FAIL(bo_android != NULL, (tbm_bo_handle) NULL);
 
+	DBG("bo:%p, handler:%p, flags_tbm:%d, size:%d", bo_android,
+		bo_android->handler, bo_android->flags_tbm, bo_android->size);
+
 	/*Get mapped bo_handle*/
 	bo_handle = _android_bo_handle(bufmgr_android, bo_android, device);
 	if (bo_handle.ptr == NULL) {
-		TBM_ANDROID_LOG("error: Cannot get handle: device:%d\n", device);
+		TBM_LOG_E("Cannot get handle: device:%s", STR_DEVICE[device]);
 		return (tbm_bo_handle) NULL;
 	}
 
@@ -590,11 +666,15 @@ tbm_android_bo_map(tbm_bo bo, int device, int opt)
 	/*Get mapped bo_handle*/
 	bo_handle = _android_bo_handle(bufmgr_android, bo_android, device);
 	if (bo_handle.ptr == NULL) {
-		TBM_ANDROID_LOG("error: Cannot get handle: device:%d\n", device);
+		TBM_LOG_E("Cannot get handle: device:%d", device);
 		return (tbm_bo_handle) NULL;
 	}
 
 	bo_android->map_cnt++;
+
+	DBG("bo:%p, handler:%p,\n		flags_tbm:%d, size:%d, map_cnt = %d, opt:%s",
+		bo_android, bo_android->handler, bo_android->flags_tbm,
+		bo_android->size, bo_android->map_cnt, STR_OPT[opt]);
 
 	return bo_handle;
 }
@@ -619,20 +699,22 @@ tbm_android_bo_unmap(tbm_bo bo)
 	ANDROID_RETURN_VAL_IF_FAIL(bo_android != NULL, 0);
 
 	if (!bo_android->map_cnt) {
-		TBM_ANDROID_LOG("error(%s:%d): The buffer is not mapped\n",
-												__func__, __LINE__);
+		TBM_LOG_E("The buffer is not mapped");
 		return 0;
 	}
 
 	bo_android->map_cnt--;
+
+	DBG("bo:%p, handler:%p, \n		flags_tbm:%d, size:%d, map_cnt = %d",
+		bo_android, bo_android->handler, bo_android->flags_tbm,
+		bo_android->size, bo_android->map_cnt);
 
 	if (bo_android->map_cnt)
 		return 1;
 
 	ret = gralloc_module->unlock(gralloc_module, bo_android->handler);
 	if (ret) {
-		TBM_ANDROID_LOG("error(%s:%d): Cannot unlock buffer\n",
-										__func__, __LINE__);
+		TBM_LOG_E("Cannot unlock buffer");
 		return 0;
 	}
 
@@ -651,6 +733,8 @@ tbm_android_bufmgr_deinit(void *priv)
 	bufmgr_android = (tbm_bufmgr_android) priv;
 
 	gralloc_close(bufmgr_android->alloc_dev);
+
+	DBG("bufmgr:%p", bufmgr_android);
 
 	free(bufmgr_android);
 }
@@ -675,6 +759,8 @@ tbm_android_surface_supported_format(uint32_t **formats, uint32_t *num)
 
 	*formats = color_formats;
 	*num = ANDROID_TIZEN_FORMATS_MAP_ROWS_CNT;
+
+	DBG("formats:%p, num:%d", *formats, *num);
 
 	return 1;
 }
@@ -708,7 +794,7 @@ tbm_android_surface_get_plane_data(int width, int height,
 
 	android_format = _get_android_format_from_tbm(tbm_format);
 	if (android_format < 0) {
-		TBM_ANDROID_LOG("error: this tbm(%d) -> android format match isn't supported!", tbm_format);
+		TBM_LOG_E("this tbm(%d) -> android format match isn't supported!", tbm_format);
 		return 0;
 	}
 
@@ -727,22 +813,44 @@ tbm_android_bo_get_flags(tbm_bo bo)
 	bo_android = (tbm_bo_android)tbm_backend_get_bo_priv(bo);
 	ANDROID_RETURN_VAL_IF_FAIL(bo_android != NULL, 0);
 
+	DBG("bo:%p, handler:%p, flags_tbm:%d, size:%d", bo_android,
+			bo_android->handler, bo_android->flags_tbm, bo_android->size);
+
 	return bo_android->flags_tbm;
 }
 
 static int
 init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 {
+	char *env;
 	int ret;
 	tbm_bufmgr_android bufmgr_android;
 	tbm_bufmgr_backend bufmgr_backend;
+
+#ifdef HAVE_DLOG
+	env = getenv("TBM_BACKEND_DLOG");
+	if (env) {
+		bDlog = atoi(env);
+	} else {
+		bDlog = 1;
+	}
+#endif
+
+#ifdef DEBUG
+	env = getenv("TBM_BACKEND_DEBUG");
+	if (env) {
+		bDebug = atoi(env);
+	} else {
+		bDebug = 0;
+	}
+#endif
 
 	if (!bufmgr)
 		return 0;
 
 	bufmgr_android = calloc(1, sizeof(struct _tbm_bufmgr_android));
 	if (!bufmgr_android) {
-		TBM_ANDROID_LOG("error: Fail to alloc bufmgr_android!\n");
+		TBM_LOG_E("Fail to alloc bufmgr_android!");
 		return 0;
 	}
 
@@ -750,7 +858,7 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 		hw_get_module(GRALLOC_HARDWARE_MODULE_ID,
 					  (const hw_module_t **)&bufmgr_android->gralloc_module);
 	if (ret || !bufmgr_android->gralloc_module) {
-		TBM_ANDROID_LOG("error: Cannot get gralloc hardware module!\n");
+		TBM_LOG_E("Cannot get gralloc hardware module!");
 		goto fail_1;
 	}
 
@@ -758,13 +866,18 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 		gralloc_open((const hw_module_t *)bufmgr_android->gralloc_module,
 					 &bufmgr_android->alloc_dev);
 	if (ret || !&bufmgr_android->alloc_dev) {
-		TBM_ANDROID_LOG("error: Cannot open the gralloc!\n");
+		TBM_LOG_E("Cannot open the gralloc!");
 		goto fail_1;
 	}
 
+	TBM_LOG_I("gralloc version: %x.\n",
+			  bufmgr_android->alloc_dev->common.version & 0xFFFF0000);
+	TBM_LOG_I("gralloc module api version: %hu.\n",
+			  bufmgr_android->alloc_dev->common.module->module_api_version);
+
 	bufmgr_backend = tbm_backend_alloc();
 	if (!bufmgr_backend) {
-		TBM_ANDROID_LOG("error: Fail to create android backend!\n");
+		TBM_LOG_E("Fail to create android backend!");
 		goto fail_2;
 	}
 
@@ -805,8 +918,55 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	bufmgr_backend->bo_import_ = tbm_android_import;
 	bufmgr_backend->bo_export_ = tbm_android_export;
 
+	DBG("bufmgr:%p, backend:%p", bufmgr_android, bufmgr_backend);
+
+	DBG("bufmgr_backend->flags:%d\n"
+		"		bufmgr_backend->priv:%p\n"
+		"		bufmgr_backend->bufmgr_deinit:%p\n"
+		"		bufmgr_backend->bo_size:%p\n"
+		"		bufmgr_backend->bo_alloc:%p\n"
+		"		bufmgr_backend->bo_free:%p\n"
+		"		bufmgr_backend->bo_import:%p\n"
+		"		bufmgr_backend->bo_export:%p\n"
+		"		bufmgr_backend->bo_get_handle:%p\n"
+		"		bufmgr_backend->bo_map:%p\n"
+		"		bufmgr_backend->bo_unmap:%p\n"
+		"		bufmgr_backend->bo_unlock:%p\n"
+		"		bufmgr_backend->bo_lock:%p\n"
+		"		bufmgr_backend->surface_supported_format:%p\n"
+		"		bufmgr_backend->surface_get_plane_data:%p\n"
+		"		bufmgr_backend->bo_import_fd:%p\n"
+		"		bufmgr_backend->bo_export_fd:%p\n"
+		"		bufmgr_backend->bo_get_flags:%p\n"
+		"		bufmgr_backend->bufmgr_bind_native_display:%p\n"
+		"		bufmgr_backend->surface_bo_alloc:%p\n"
+		"		bufmgr_backend->bo_import_:%p\n"
+		"		bufmgr_backend->bo_export_:%p",
+		bufmgr_backend->flags,
+		bufmgr_backend->priv,
+		bufmgr_backend->bufmgr_deinit,
+		bufmgr_backend->bo_size,
+		bufmgr_backend->bo_alloc,
+		bufmgr_backend->bo_free,
+		bufmgr_backend->bo_import,
+		bufmgr_backend->bo_export,
+		bufmgr_backend->bo_get_handle,
+		bufmgr_backend->bo_map,
+		bufmgr_backend->bo_unmap,
+		bufmgr_backend->bo_unlock,
+		bufmgr_backend->bo_lock,
+		bufmgr_backend->surface_supported_format,
+		bufmgr_backend->surface_get_plane_data,
+		bufmgr_backend->bo_import_fd,
+		bufmgr_backend->bo_export_fd,
+		bufmgr_backend->bo_get_flags,
+		bufmgr_backend->bufmgr_bind_native_display,
+		bufmgr_backend->surface_bo_alloc,
+		bufmgr_backend->bo_import_,
+		bufmgr_backend->bo_export_);
+
 	if (!tbm_backend_init(bufmgr, bufmgr_backend)) {
-		TBM_ANDROID_LOG("error: Fail to init backend!\n");
+		TBM_LOG_E("Fail to init backend!");
 		tbm_backend_free(bufmgr_backend);
 
 		goto fail_2;

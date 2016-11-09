@@ -30,7 +30,7 @@ AC_PROG_CC
 AC_HEADER_STDC
 
 # android-hw-libs is temporary unless we have the hybris and have to use the android tool-chain
-PKG_CHECK_MODULES(TBM_BACKEND_ANDROID, libtbm android-headers android-hw-libs dlog)
+PKG_CHECK_MODULES(TBM_BACKEND_ANDROID, libtbm android-headers android-hw-libs)
 
 # set the dir for the tbm module
 DEFAULT_TBM_MODULE_PATH="${libdir}/bufmgr"
@@ -38,6 +38,18 @@ AC_ARG_WITH(tbm-module-path, AS_HELP_STRING([--with-tbm-module-path=PATH], [tbm 
 				[ TBM_MODULE_PATH="$withval" ],
 				[ TBM_MODULE_PATH="${DEFAULT_TBM_MODULE_PATH}" ])
 AC_SUBST(TBM_MODULE_PATH)
+
+PKG_CHECK_EXISTS([dlog], [have_dlog="yes"], [have_dlog="no"])
+AC_MSG_CHECKING([Have dlog logger])
+AC_MSG_RESULT([${have_dlog}])
+if test "x${have_dlog}" = "xyes"; then
+    AC_DEFINE([HAVE_DLOG], [1], [Define to 1 if you have dlog])
+
+    PKG_CHECK_MODULES(DLOG, dlog)
+
+    TBM_BACKEND_ANDROID_CFLAGS+="$DLOG_CFLAGS "
+    TBM_BACKEND_ANDROID_LIBS+="$DLOG_LIBS "
+fi
 
 AC_OUTPUT([
 	Makefile
