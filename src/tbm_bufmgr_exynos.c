@@ -58,7 +58,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #define DEBUG
 #define USE_DMAIMPORT
-#define TBM_COLOR_FORMAT_COUNT 8
+#define TBM_COLOR_FORMAT_COUNT 4
 
 #define EXYNOS_DRM_NAME "exynos"
 
@@ -265,15 +265,12 @@ char *STR_OPT[] = {
 };
 
 
-uint32_t tbm_exynos_color_format_list[TBM_COLOR_FORMAT_COUNT] = {   TBM_FORMAT_RGBA8888,
-								    TBM_FORMAT_BGRA8888,
-								    TBM_FORMAT_RGBX8888,
-								    TBM_FORMAT_RGB888,
-								    TBM_FORMAT_NV12,
-								    TBM_FORMAT_NV21,
-								    TBM_FORMAT_YUV420,
-								    TBM_FORMAT_YVU420
-								};
+uint32_t tbm_exynos_color_format_list[TBM_COLOR_FORMAT_COUNT] = {
+                                    TBM_FORMAT_ARGB8888,
+                                    TBM_FORMAT_XRGB8888,
+                                    TBM_FORMAT_NV12,
+                                    TBM_FORMAT_YUV420
+                                    };
 
 #ifdef ENABLE_CACHECRTL
 static inline int
