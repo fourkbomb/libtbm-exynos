@@ -166,12 +166,8 @@ static const uint32_t android_tizen_formats_map[][2] =
 static const uint32_t android_tizen_flags_map[][2] =
 {
 	{ GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_OFTEN, TBM_BO_DEFAULT },
-#ifdef QCOM_BSP
-	{ GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN, TBM_BO_SCANOUT }
-#else
 	{ GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN |
-				GRALLOC_USAGE_PRIVATE_NONECACHE, TBM_BO_SCANOUT }
-#endif
+		GRALLOC_USAGE_HW_RENDER, TBM_BO_SCANOUT }
 };
 
 /* amount of map rows */
@@ -528,7 +524,8 @@ tbm_android_import(tbm_bo bo, const void *native)
 	/*
 	 * TODO: must find some way of getting android_flags
 	 */
-	android_flags = GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN;
+	android_flags = GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_SW_WRITE_OFTEN |
+					GRALLOC_USAGE_HW_RENDER;
 	width = native_handle->data[native_handle->numFds + 9];
 	height = native_handle->data[native_handle->numFds + 10];
 	android_format = native_handle->data[native_handle->numFds + 8];
