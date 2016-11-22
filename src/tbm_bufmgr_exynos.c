@@ -266,27 +266,44 @@ char *STR_OPT[] = {
 
 
 uint32_t tbm_exynos_color_format_list[TBM_COLOR_FORMAT_COUNT] = {
-                                    TBM_FORMAT_ARGB8888,
-                                    TBM_FORMAT_XRGB8888,
-                                    TBM_FORMAT_NV12,
-                                    TBM_FORMAT_YUV420
-                                    };
+										TBM_FORMAT_ARGB8888,
+										TBM_FORMAT_XRGB8888,
+										TBM_FORMAT_NV12,
+										TBM_FORMAT_YUV420
+									};
 
 #ifdef ENABLE_CACHECRTL
+#ifdef TGL_GET_VERSION
+static inline int
+_tgl_get_version(int fd)
+{
+	struct tgl_ver_data data;
+	int err;
+
+	err = ioctl(fd, TGL_IOCTL_GET_VERSION, &data);
+	if (err) {
+		TBM_EXYNOS_LOG("error(%s) %s:%d\n",	strerror(errno));
+		return 0;
+	}
+
+	DBG("tgl version is (%u, %u).\n", data.major, data.minor);
+
+	return 1;
+}
+#endif
+
 static inline int
 _tgl_init(int fd, unsigned int key)
 {
-	struct tgl_attribute attr;
+	struct tgl_reg_data data;
 	int err;
 
-	attr.key = key;
-	attr.timeout_ms = 1000;
+	data.key = key;
+	data.timeout_ms = 1000;
 
-	err = ioctl(fd, TGL_IOC_INIT_LOCK, &attr);
+	err = ioctl(fd, TGL_IOCTL_REGISTER, &data);
 	if (err) {
-		TBM_EXYNOS_LOG("[libtbm:%d] "
-			       "warning(%s) %s:%d key:%d\n",
-			       getpid(), strerror(errno), __func__, __LINE__, key);
+		TBM_EXYNOS_LOG("error(%s) key:%d\n", strerror(errno), key);
 		return 0;
 	}
 
@@ -296,32 +313,83 @@ _tgl_init(int fd, unsigned int key)
 static inline int
 _tgl_destroy(int fd, unsigned int key)
 {
+	struct tgl_reg_data data;
 	int err;
 
-	err = ioctl(fd, TGL_IOC_DESTROY_LOCK, key);
+	data.key = key;
+	err = ioctl(fd, TGL_IOCTL_UNREGISTER, &data);
 	if (err) {
-		TBM_EXYNOS_LOG("[libtbm:%d] "
-			       "warning(%s) %s:%d key:%d\n",
-			       getpid(), strerror(errno), __func__, __LINE__, key);
+		TBM_EXYNOS_LOG("error(%s) key:%d\n", strerror(errno), key);
 		return 0;
 	}
 
 	return 1;
 }
+
+static inline int
+_tgl_lock(int fd, unsigned int key, int opt)
+{
+	struct tgl_lock_data data;
+	enum tgl_type_data tgl_type;
+	int err;
+
+	switch (opt) {
+	case TBM_OPTION_READ:
+		tgl_type = TGL_TYPE_READ;
+		break;
+	case TBM_OPTION_WRITE:
+		tgl_type = TGL_TYPE_WRITE;
+		break;
+	default:
+		tgl_type = TGL_TYPE_NONE;
+		break;
+	}
+
+	data.key = key;
+	data.type = tgl_type;
+
+	err = ioctl(fd, TGL_IOCTL_LOCK, data);
+	if (err) {
+		TBM_EXYNOS_LOG("error(%s) key:%d opt:%d\n",
+			strerror(errno), key, opt);
+		return 0;
+	}
+
+	return 1;
+}
+
+static inline int
+_tgl_unlock(int fd, unsigned int key)
+{
+	struct tgl_lock_data data;
+	int err;
+
+	data.key = key;
+	data.type = TGL_TYPE_NONE;
+
+	err = ioctl(fd, TGL_IOCTL_UNLOCK, data);
+	if (err) {
+		TBM_EXYNOS_LOG("error(%s) key:%d\n",
+			strerror(errno), key);
+		return 0;
+	}
+
+	return 1;
+}
+
 static inline int
 _tgl_set_data(int fd, unsigned int key, unsigned int val)
 {
+	struct tgl_usr_data data;
 	int err;
 
-	struct tgl_user_data arg;
+	data.key = key;
+	data.data1 = val;
 
-	arg.key = key;
-	arg.data1 = val;
-	err = ioctl(fd, TGL_IOC_SET_DATA, &arg);
+	err = ioctl(fd, TGL_IOCTL_SET_DATA, &data);
 	if (err) {
-		TBM_EXYNOS_LOG("[libtbm:%d] "
-			       "warning(%s) %s:%d key:%d\n",
-			       getpid(), strerror(errno), __func__, __LINE__, key);
+		TBM_EXYNOS_LOG("error(%s) key:%d\n",
+			strerror(errno), key);
 		return 0;
 	}
 
@@ -331,19 +399,19 @@ _tgl_set_data(int fd, unsigned int key, unsigned int val)
 static inline unsigned int
 _tgl_get_data(int fd, unsigned int key)
 {
+	struct tgl_usr_data data = { 0, };
 	int err;
-	struct tgl_user_data arg = { 0, };
 
-	arg.key = key;
-	err = ioctl(fd, TGL_IOC_GET_DATA, &arg);
+	data.key = key;
+
+	err = ioctl(fd, TGL_IOCTL_GET_DATA, &data);
 	if (err) {
-		TBM_EXYNOS_LOG("[libtbm:%d] "
-			       "warning(%s) %s:%d key:%d\n",
-			       getpid(), strerror(errno), __func__, __LINE__, key);
+		TBM_EXYNOS_LOG("error(%s) key:%d\n",
+			strerror(errno), key);
 		return 0;
 	}
 
-	return arg.data1;
+	return data.data1;
 }
 
 static int
@@ -408,9 +476,9 @@ _bo_init_cache_state(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, i
 	if (bufmgr_exynos->use_dma_fence)
 		return 1;
 
-	tbm_bo_cache_state cache_state;
-
 	_tgl_init(bufmgr_exynos->tgl_fd, bo_exynos->name);
+
+	tbm_bo_cache_state cache_state;
 
 	if (import == 0) {
 		cache_state.data.isDirtied = DEVICE_NONE;
@@ -543,14 +611,22 @@ _bufmgr_init_cache_state(tbm_bufmgr_exynos bufmgr_exynos)
 	bufmgr_exynos->tgl_fd = open(tgl_devfile, O_RDWR);
 
 	if (bufmgr_exynos->tgl_fd < 0) {
-		bufmgr_exynos->tgl_fd = open(tgl_devfile1, O_RDWR);
-		if (bufmgr_exynos->tgl_fd < 0) {
-			TBM_EXYNOS_LOG("[libtbm-exynos:%d] "
-				       "warning: Fail to open global_lock:%s\n",
-				       getpid(), tgl_devfile);
-			return 0;
-		}
+	    bufmgr_exynos->tgl_fd = open(tgl_devfile1, O_RDWR);
+	    if (bufmgr_exynos->tgl_fd < 0) {
+		    TBM_EXYNOS_LOG("[libtbm-exynos:%d] "
+					"warning: Fail to open global_lock:%s\n",
+					getpid(), tgl_devfile1);
+		    return 0;
+	    }
 	}
+
+#ifdef TGL_GET_VERSION
+	if (!_tgl_get_version(bufmgr_exynos->tgl_fd)) {
+		TBM_EXYNOS_LOG("fail to get tgl_version. tgl init failed.\n");
+		close(bufmgr_sprd->tgl_fd);
+		return 0;
+	}
+#endif
 
 	if (!_tgl_init(bufmgr_exynos->tgl_fd, GLOBAL_KEY)) {
 		TBM_EXYNOS_LOG("[libtbm-exynos:%d] "

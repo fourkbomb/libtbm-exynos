@@ -39,38 +39,93 @@ static char tgl_devfile[] = "/dev/slp_global_lock";
 static char tgl_devfile1[] = "/dev/tgl";
 #endif
 
-#define TGL_IOC_BASE				0x32
+#define TGL_IOCTL_BASE		0x32
+#define TGL_IO(nr)			_IO(TGL_IOCTL_BASE, nr)
+#define TGL_IOR(nr, type)	_IOR(TGL_IOCTL_BASE, nr, type)
+#define TGL_IOW(nr, type)	_IOW(TGL_IOCTL_BASE, nr, type)
+#define TGL_IOWR(nr, type)	_IOWR(TGL_IOCTL_BASE, nr, type)
 
-struct tgl_attribute {
+/**
+ * struct tgl_ver_data - tgl version data structure
+ * @major: major version
+ * @minor: minor version
+ */
+struct tgl_ver_data {
+	unsigned int major;
+	unsigned int minor;
+};
+
+/**
+ * struct tgl_reg_data - tgl  data structure
+ * @key: lookup key
+ * @timeout_ms: timeout value for waiting event
+ */
+struct tgl_reg_data {
 	unsigned int key;
 	unsigned int timeout_ms;
 };
 
-struct tgl_user_data {
+enum tgl_type_data {
+	TGL_TYPE_NONE = 0,
+	TGL_TYPE_READ = (1 << 0),
+	TGL_TYPE_WRITE = (1 << 1),
+};
+
+/**
+ * struct tgl_lock_data - tgl lock data structure
+ * @key: lookup key
+ * @type: lock type that is in tgl_type_data
+ */
+struct tgl_lock_data {
+	unsigned int key;
+	enum tgl_type_data type;
+};
+
+enum tgl_status_data {
+	TGL_STATUS_UNLOCKED,
+	TGL_STATUS_LOCKED,
+};
+
+/**
+ * struct tgl_usr_data - tgl user data structure
+ * @key: lookup key
+ * @data1: user data 1
+ * @data2: user data 2
+ * @status: lock status that is in tgl_status_data
+ */
+struct tgl_usr_data {
 	unsigned int key;
 	unsigned int data1;
 	unsigned int data2;
-	unsigned int locked;
+	enum tgl_status_data status;
 };
 
-typedef enum {
-	_TGL_INIT_LOCK = 1,
-	_TGL_DESTROY_LOCK,
-	_TGL_LOCK_LOCK,
-	_TGL_UNLOCK_LOCK,
+enum {
+	_TGL_GET_VERSION,
+	_TGL_REGISTER,
+	_TGL_UNREGISTER,
+	_TGL_LOCK,
+	_TGL_UNLOCK,
 	_TGL_SET_DATA,
 	_TGL_GET_DATA,
-} _tgl_ioctls;
+};
 
-#define TGL_IOC_INIT_LOCK			_IOW(TGL_IOC_BASE, _TGL_INIT_LOCK, struct tgl_attribute *)
-#define TGL_IOC_DESTROY_LOCK		_IOW(TGL_IOC_BASE, _TGL_DESTROY_LOCK, unsigned int)
-#define TGL_IOC_LOCK_LOCK			_IOW(TGL_IOC_BASE, _TGL_LOCK_LOCK, unsigned int)
-#define TGL_IOC_UNLOCK_LOCK			_IOW(TGL_IOC_BASE, _TGL_UNLOCK_LOCK, unsigned int)
-#define TGL_IOC_SET_DATA			_IOW(TGL_IOC_BASE, _TGL_SET_DATA, struct tgl_user_data *)
-#define TGL_IOC_GET_DATA			_IOW(TGL_IOC_BASE, _TGL_GET_DATA, struct tgl_user_data *)
+/* get version information */
+#define TGL_IOCTL_GET_VERSION	TGL_IOR(_TGL_GET_VERSION, struct tgl_ver_data)
+/* register key */
+#define TGL_IOCTL_REGISTER		TGL_IOW(_TGL_REGISTER, struct tgl_reg_data)
+/* unregister key */
+#define TGL_IOCTL_UNREGISTER	TGL_IOW(_TGL_UNREGISTER, struct tgl_reg_data)
+/* lock with key */
+#define TGL_IOCTL_LOCK			TGL_IOW(_TGL_LOCK, struct tgl_lock_data)
+/* unlock with key */
+#define TGL_IOCTL_UNLOCK		TGL_IOW(_TGL_UNLOCK, struct tgl_lock_data)
+/* set user data with key */
+#define TGL_IOCTL_SET_DATA		TGL_IOW(_TGL_SET_DATA, struct tgl_usr_data)
+/* get user data with key */
+#define TGL_IOCTL_GET_DATA		TGL_IOR(_TGL_GET_DATA, struct tgl_usr_data)
 
 #ifdef ENABLE_CACHECRTL
-
 /* indicate cache units. */
 enum e_drm_exynos_gem_cache_sel {
 	EXYNOS_DRM_L1_CACHE		= 1 << 0,
