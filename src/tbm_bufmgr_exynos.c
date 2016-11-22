@@ -101,11 +101,11 @@ char *target_name()
 	return app_name;
 }
 
-#define TBM_EXYNOS_LOG(fmt, args...) LOGE("\033[31m"  "[%s]" fmt "\033[0m", target_name(), ##args)
-#define DBG(fmt, args...)  {if (bDebug&01) LOGE(fmt, ##args); }
+#define TBM_EXYNOS_ERROR(fmt, args...)	LOGE("\033[31m"  "[%s] " fmt "\033[0m", target_name(), ##args)
+#define TBM_EXYNOS_DEBUG(fmt, args...)	{if (bDebug&01) LOGD("[%s] " fmt, target_name(), ##args); }
 #else
-#define TBM_EXYNOS_LOG(...)
-#define DBG(...)
+#define TBM_EXYNOS_ERROR(...)
+#define TBM_EXYNOS_DEBUG(...)
 #endif
 
 #define SIZE_ALIGN(value, base) (((value) + ((base) - 1)) & ~((base) - 1))
@@ -135,14 +135,14 @@ char *target_name()
 /* check condition */
 #define EXYNOS_RETURN_IF_FAIL(cond) {\
 	if (!(cond)) {\
-		TBM_EXYNOS_LOG("[%s] : '%s' failed.\n", __func__, #cond);\
+		TBM_EXYNOS_ERROR("[%s] : '%s' failed.\n", __func__, #cond);\
 		return;\
 	} \
 }
 
 #define EXYNOS_RETURN_VAL_IF_FAIL(cond, val) {\
 	if (!(cond)) {\
-		TBM_EXYNOS_LOG("[%s] : '%s' failed.\n", __func__, #cond);\
+		TBM_EXYNOS_ERROR("[%s] : '%s' failed.\n", __func__, #cond);\
 		return val;\
 	} \
 }
@@ -282,11 +282,11 @@ _tgl_get_version(int fd)
 
 	err = ioctl(fd, TGL_IOCTL_GET_VERSION, &data);
 	if (err) {
-		TBM_EXYNOS_LOG("error(%s) %s:%d\n",	strerror(errno));
+		TBM_EXYNOS_ERROR("error(%s) %s:%d\n", strerror(errno));
 		return 0;
 	}
 
-	DBG("tgl version is (%u, %u).\n", data.major, data.minor);
+	TBM_EXYNOS_DEBUG("tgl version is (%u, %u).\n", data.major, data.minor);
 
 	return 1;
 }
@@ -303,7 +303,7 @@ _tgl_init(int fd, unsigned int key)
 
 	err = ioctl(fd, TGL_IOCTL_REGISTER, &data);
 	if (err) {
-		TBM_EXYNOS_LOG("error(%s) key:%d\n", strerror(errno), key);
+		TBM_EXYNOS_ERROR("error(%s) key:%d\n", strerror(errno), key);
 		return 0;
 	}
 
@@ -319,7 +319,7 @@ _tgl_destroy(int fd, unsigned int key)
 	data.key = key;
 	err = ioctl(fd, TGL_IOCTL_UNREGISTER, &data);
 	if (err) {
-		TBM_EXYNOS_LOG("error(%s) key:%d\n", strerror(errno), key);
+		TBM_EXYNOS_ERROR("error(%s) key:%d\n", strerror(errno), key);
 		return 0;
 	}
 
@@ -350,7 +350,7 @@ _tgl_lock(int fd, unsigned int key, int opt)
 
 	err = ioctl(fd, TGL_IOCTL_LOCK, data);
 	if (err) {
-		TBM_EXYNOS_LOG("error(%s) key:%d opt:%d\n",
+		TBM_EXYNOS_ERROR("error(%s) key:%d opt:%d\n",
 			strerror(errno), key, opt);
 		return 0;
 	}
@@ -369,7 +369,7 @@ _tgl_unlock(int fd, unsigned int key)
 
 	err = ioctl(fd, TGL_IOCTL_UNLOCK, data);
 	if (err) {
-		TBM_EXYNOS_LOG("error(%s) key:%d\n",
+		TBM_EXYNOS_ERROR("error(%s) key:%d\n",
 			strerror(errno), key);
 		return 0;
 	}
@@ -388,7 +388,7 @@ _tgl_set_data(int fd, unsigned int key, unsigned int val)
 
 	err = ioctl(fd, TGL_IOCTL_SET_DATA, &data);
 	if (err) {
-		TBM_EXYNOS_LOG("error(%s) key:%d\n",
+		TBM_EXYNOS_ERROR("error(%s) key:%d\n",
 			strerror(errno), key);
 		return 0;
 	}
@@ -406,7 +406,7 @@ _tgl_get_data(int fd, unsigned int key)
 
 	err = ioctl(fd, TGL_IOCTL_GET_DATA, &data);
 	if (err) {
-		TBM_EXYNOS_LOG("error(%s) key:%d\n",
+		TBM_EXYNOS_ERROR("error(%s) key:%d\n",
 			strerror(errno), key);
 		return 0;
 	}
@@ -458,7 +458,7 @@ _exynos_cache_flush(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, in
 	ret = drmCommandWriteRead(bufmgr_exynos->fd, DRM_EXYNOS_GEM_CACHE_OP, &cache_op,
 				  sizeof(cache_op));
 	if (ret) {
-		TBM_EXYNOS_LOG("warning fail to flush the cache.\n");
+		TBM_EXYNOS_ERROR("fail to flush the cache.\n");
 		return 0;
 	}
 
@@ -548,8 +548,7 @@ _bo_set_cache_state(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, in
 		/* call cache flush */
 		_exynos_cache_flush(bufmgr_exynos, bo_exynos, need_flush);
 
-		DBG("[libtbm:%d] \tcache(%d,%d)....flush:0x%x, cntFlush(%d)\n",
-		    getpid(),
+		TBM_EXYNOS_DEBUG(" \tcache(%d,%d)....flush:0x%x, cntFlush(%d)\n",
 		    bo_exynos->cache_state.data.isCached,
 		    bo_exynos->cache_state.data.isDirtied,
 		    need_flush,
@@ -613,26 +612,22 @@ _bufmgr_init_cache_state(tbm_bufmgr_exynos bufmgr_exynos)
 	if (bufmgr_exynos->tgl_fd < 0) {
 	    bufmgr_exynos->tgl_fd = open(tgl_devfile1, O_RDWR);
 	    if (bufmgr_exynos->tgl_fd < 0) {
-		    TBM_EXYNOS_LOG("[libtbm-exynos:%d] "
-					"warning: Fail to open global_lock:%s\n",
-					getpid(), tgl_devfile1);
+		    TBM_EXYNOS_ERROR("fail to open global_lock:%s\n",
+					tgl_devfile1);
 		    return 0;
 	    }
 	}
 
 #ifdef TGL_GET_VERSION
 	if (!_tgl_get_version(bufmgr_exynos->tgl_fd)) {
-		TBM_EXYNOS_LOG("fail to get tgl_version. tgl init failed.\n");
+		TBM_EXYNOS_ERROR("fail to get tgl_version. tgl init failed.\n");
 		close(bufmgr_sprd->tgl_fd);
 		return 0;
 	}
 #endif
 
 	if (!_tgl_init(bufmgr_exynos->tgl_fd, GLOBAL_KEY)) {
-		TBM_EXYNOS_LOG("[libtbm-exynos:%d] "
-			       "warning: Fail to initialize the tgl\n",
-			       getpid());
-
+		TBM_EXYNOS_ERROR("fail to initialize the tgl\n");
 		close(bufmgr_exynos->tgl_fd);
 		return 0;
 	}
@@ -662,9 +657,7 @@ _tbm_exynos_open_drm()
 
 	fd = drmOpen(EXYNOS_DRM_NAME, NULL);
 	if (fd < 0) {
-		TBM_EXYNOS_LOG("[libtbm-exynos:%d] "
-			      "warning %s:%d fail to open drm\n",
-			      getpid(), __FUNCTION__, __LINE__);
+		TBM_EXYNOS_ERROR("fail to open drm.(%s)\n", EXYNOS_DRM_NAME);
 	}
 
 	if (fd < 0) {
@@ -676,13 +669,11 @@ _tbm_exynos_open_drm()
 		struct stat s;
 		int ret;
 
-		TBM_EXYNOS_LOG("[libtbm-exynos:%d] "
-			      "%s:%d search drm-device by udev\n",
-			      getpid(), __FUNCTION__, __LINE__);
+		TBM_EXYNOS_DEBUG("search drm-device by udev\n");
 
 		udev = udev_new();
 		if (!udev) {
-			TBM_EXYNOS_LOG("udev_new() failed.\n");
+			TBM_EXYNOS_ERROR("udev_new() failed.\n");
 			return -1;
 		}
 
@@ -699,7 +690,7 @@ _tbm_exynos_open_drm()
 			if (device_parent) {
 				if (strcmp(udev_device_get_sysname(device_parent), "exynos-drm") == 0) {
 					drm_device = device;
-					DBG("[%s] Found render device: '%s' (%s)\n",
+					TBM_EXYNOS_DEBUG("[%s] Found render device: '%s' (%s)\n",
 					    target_name(),
 					    udev_device_get_syspath(drm_device),
 					    udev_device_get_sysname(device_parent));
@@ -714,7 +705,7 @@ _tbm_exynos_open_drm()
 		/* Get device file path. */
 		filepath = udev_device_get_devnode(drm_device);
 		if (!filepath) {
-			TBM_EXYNOS_LOG("udev_device_get_devnode() failed.\n");
+			TBM_EXYNOS_ERROR("udev_device_get_devnode() failed.\n");
 			udev_device_unref(drm_device);
 			udev_unref(udev);
 			return -1;
@@ -723,7 +714,7 @@ _tbm_exynos_open_drm()
 		/* Open DRM device file and check validity. */
 		fd = open(filepath, O_RDWR | O_CLOEXEC);
 		if (fd < 0) {
-			TBM_EXYNOS_LOG("open(%s, O_RDWR | O_CLOEXEC) failed.\n");
+			TBM_EXYNOS_ERROR("open(%s, O_RDWR | O_CLOEXEC) failed.\n");
 			udev_device_unref(drm_device);
 			udev_unref(udev);
 			return -1;
@@ -731,7 +722,7 @@ _tbm_exynos_open_drm()
 
 		ret = fstat(fd, &s);
 		if (ret) {
-			TBM_EXYNOS_LOG("fstat() failed %s.\n");
+			TBM_EXYNOS_ERROR("fstat() failed %s.\n");
 			close(fd);
 			udev_device_unref(drm_device);
 			udev_unref(udev);
@@ -759,7 +750,7 @@ _check_render_node(void)
 
 	udev = udev_new();
 	if (!udev) {
-		TBM_EXYNOS_LOG("udev_new() failed.\n");
+		TBM_EXYNOS_ERROR("udev_new() failed.\n");
 		return -1;
 	}
 
@@ -776,8 +767,7 @@ _check_render_node(void)
 		if (device_parent) {
 			if (strcmp(udev_device_get_sysname(device_parent), "exynos-drm") == 0) {
 				drm_device = device;
-				DBG("[%s] Found render device: '%s' (%s)\n",
-				    target_name(),
+				TBM_EXYNOS_DEBUG("Found render device: '%s' (%s)\n",
 				    udev_device_get_syspath(drm_device),
 				    udev_device_get_sysname(device_parent));
 				break;
@@ -812,7 +802,7 @@ _get_render_node(void)
 
 	udev = udev_new();
 	if (!udev) {
-		TBM_EXYNOS_LOG("udev_new() failed.\n");
+		TBM_EXYNOS_ERROR("udev_new() failed.\n");
 		return -1;
 	}
 
@@ -829,8 +819,7 @@ _get_render_node(void)
 		if (device_parent) {
 			if (strcmp(udev_device_get_sysname(device_parent), "exynos-drm") == 0) {
 				drm_device = device;
-				DBG("[%s] Found render device: '%s' (%s)\n",
-				    target_name(),
+				TBM_EXYNOS_DEBUG("Found render device: '%s' (%s)\n",
 				    udev_device_get_syspath(drm_device),
 				    udev_device_get_sysname(device_parent));
 				break;
@@ -844,7 +833,7 @@ _get_render_node(void)
 	/* Get device file path. */
 	filepath = udev_device_get_devnode(drm_device);
 	if (!filepath) {
-		TBM_EXYNOS_LOG("udev_device_get_devnode() failed.\n");
+		TBM_EXYNOS_ERROR("udev_device_get_devnode() failed.\n");
 		udev_device_unref(drm_device);
 		udev_unref(udev);
 		return -1;
@@ -853,7 +842,7 @@ _get_render_node(void)
 	/* Open DRM device file and check validity. */
 	fd = open(filepath, O_RDWR | O_CLOEXEC);
 	if (fd < 0) {
-		TBM_EXYNOS_LOG("open(%s, O_RDWR | O_CLOEXEC) failed.\n");
+		TBM_EXYNOS_ERROR("open(%s, O_RDWR | O_CLOEXEC) failed.\n");
 		udev_device_unref(drm_device);
 		udev_unref(udev);
 		return -1;
@@ -861,7 +850,7 @@ _get_render_node(void)
 
 	ret = fstat(fd, &s);
 	if (ret) {
-		TBM_EXYNOS_LOG("fstat() failed %s.\n");
+		TBM_EXYNOS_ERROR("fstat() failed %s.\n");
 		udev_device_unref(drm_device);
 		udev_unref(udev);
 		close(fd);
@@ -921,8 +910,7 @@ _get_name(int fd, unsigned int gem)
 
 	arg.handle = gem;
 	if (drmIoctl(fd, DRM_IOCTL_GEM_FLINK, &arg)) {
-		TBM_EXYNOS_LOG("error fail to get flink from gem:%d (DRM_IOCTL_GEM_FLINK)\n",
-			       gem);
+		TBM_EXYNOS_ERROR("fail to DRM_IOCTL_GEM_FLINK gem:%d", gem);
 		return 0;
 	}
 
@@ -949,14 +937,14 @@ _exynos_bo_handle(tbm_bo_exynos bo_exynos, int device)
 			arg.handle = bo_exynos->gem;
 			if (drmCommandWriteRead(bo_exynos->fd, DRM_EXYNOS_GEM_MAP, &arg,
 						sizeof(arg))) {
-				TBM_EXYNOS_LOG("error Cannot map_dumb gem=%d\n", bo_exynos->gem);
+				TBM_EXYNOS_ERROR("Cannot map_dumb gem=%d\n", bo_exynos->gem);
 				return (tbm_bo_handle) NULL;
 			}
 
 			map = mmap(NULL, bo_exynos->size, PROT_READ | PROT_WRITE, MAP_SHARED,
 				   bo_exynos->fd, arg.offset);
 			if (map == MAP_FAILED) {
-				TBM_EXYNOS_LOG("error Cannot usrptr gem=%d\n", bo_exynos->gem);
+				TBM_EXYNOS_ERROR("Cannot usrptr gem=%d\n", bo_exynos->gem);
 				return (tbm_bo_handle) NULL;
 			}
 			bo_exynos->pBase = map;
@@ -975,7 +963,7 @@ _exynos_bo_handle(tbm_bo_exynos bo_exynos, int device)
 
 			arg.handle = bo_exynos->gem;
 			if (drmIoctl(bo_exynos->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg)) {
-				TBM_EXYNOS_LOG("error Cannot dmabuf=%d\n", bo_exynos->gem);
+				TBM_EXYNOS_ERROR("Cannot dmabuf=%d\n", bo_exynos->gem);
 				return (tbm_bo_handle) NULL;
 			}
 			bo_exynos->dmabuf = arg.fd;
@@ -990,7 +978,7 @@ _exynos_bo_handle(tbm_bo_exynos bo_exynos, int device)
 
 			arg.handle = bo_exynos->gem;
 			if (drmIoctl(bo_exynos->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg)) {
-				TBM_EXYNOS_LOG("error Cannot dmabuf=%d\n", bo_exynos->gem);
+				TBM_EXYNOS_ERROR("Cannot dmabuf=%d\n", bo_exynos->gem);
 				return (tbm_bo_handle) NULL;
 			}
 			bo_exynos->dmabuf = arg.fd;
@@ -999,7 +987,7 @@ _exynos_bo_handle(tbm_bo_exynos bo_exynos, int device)
 		bo_handle.u32 = (uint32_t)bo_exynos->dmabuf;
 		break;
 	default:
-		TBM_EXYNOS_LOG("error Not supported device:%d\n", device);
+		TBM_EXYNOS_ERROR("Not supported device:%d\n", device);
 		bo_handle.ptr = (void *) NULL;
 		break;
 	}
@@ -1034,7 +1022,7 @@ tbm_exynos_bo_alloc(tbm_bo bo, int size, int flags)
 
 	bo_exynos = calloc(1, sizeof(struct _tbm_bo_exynos));
 	if (!bo_exynos) {
-		TBM_EXYNOS_LOG("error fail to allocate the bo private\n");
+		TBM_EXYNOS_ERROR("fail to allocate the bo private\n");
 		return 0;
 	}
 
@@ -1050,7 +1038,7 @@ tbm_exynos_bo_alloc(tbm_bo bo, int size, int flags)
 	arg.flags = exynos_flags;
 	if (drmCommandWriteRead(bufmgr_exynos->fd, DRM_EXYNOS_GEM_CREATE, &arg,
 				sizeof(arg))) {
-		TBM_EXYNOS_LOG("error Cannot create bo(flag:%x, size:%d)\n", arg.flags,
+		TBM_EXYNOS_ERROR("Cannot create bo(flag:%x, size:%d)\n", arg.flags,
 			       (unsigned int)arg.size);
 		free(bo_exynos);
 		return 0;
@@ -1064,7 +1052,7 @@ tbm_exynos_bo_alloc(tbm_bo bo, int size, int flags)
 	bo_exynos->name = _get_name(bo_exynos->fd, bo_exynos->gem);
 
 	if (!_bo_init_cache_state(bufmgr_exynos, bo_exynos, 0)) {
-		TBM_EXYNOS_LOG("error fail init cache state(%d)\n", bo_exynos->name);
+		TBM_EXYNOS_ERROR("fail init cache state(%d)\n", bo_exynos->name);
 		free(bo_exynos);
 		return 0;
 	}
@@ -1077,7 +1065,7 @@ tbm_exynos_bo_alloc(tbm_bo bo, int size, int flags)
 
 		arg.handle = bo_exynos->gem;
 		if (drmIoctl(bo_exynos->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg)) {
-			TBM_EXYNOS_LOG("error Cannot dmabuf=%d\n", bo_exynos->gem);
+			TBM_EXYNOS_ERROR("Cannot dmabuf=%d\n", bo_exynos->gem);
 			free(bo_exynos);
 			return 0;
 		}
@@ -1088,9 +1076,7 @@ tbm_exynos_bo_alloc(tbm_bo bo, int size, int flags)
 	PrivGem *privGem = calloc(1, sizeof(PrivGem));
 
 	if (!privGem) {
-		TBM_EXYNOS_LOG("[libtbm-exynos:%d] "
-			       "error %s:%d Fail to calloc privGem\n",
-			       getpid(), __func__, __LINE__);
+		TBM_EXYNOS_ERROR("fail to calloc privGem\n");
 		free(bo_exynos);
 		return 0;
 	}
@@ -1100,10 +1086,10 @@ tbm_exynos_bo_alloc(tbm_bo bo, int size, int flags)
 
 	if (drmHashInsert(bufmgr_exynos->hashBos, bo_exynos->name,
 			  (void *)privGem) < 0) {
-		TBM_EXYNOS_LOG("error Cannot insert bo to Hash(%d)\n", bo_exynos->name);
+		TBM_EXYNOS_ERROR("Cannot insert bo to Hash(%d)\n", bo_exynos->name);
 	}
 
-	DBG("     [%s] bo:%p, gem:%d(%d), flags:%d(%d), size:%d\n", target_name(),
+	TBM_EXYNOS_DEBUG("     bo:%p, gem:%d(%d), flags:%d(%d), size:%d\n",
 	    bo,
 	    bo_exynos->gem, bo_exynos->name,
 	    flags, exynos_flags,
@@ -1127,7 +1113,7 @@ tbm_exynos_bo_free(tbm_bo bo)
 	bo_exynos = (tbm_bo_exynos)tbm_backend_get_bo_priv(bo);
 	EXYNOS_RETURN_IF_FAIL(bo_exynos != NULL);
 
-	DBG("      [%s] bo:%p, gem:%d(%d), fd:%d, size:%d\n", target_name(),
+	TBM_EXYNOS_DEBUG("      bo:%p, gem:%d(%d), fd:%d, size:%d\n",
 	    bo,
 	    bo_exynos->gem, bo_exynos->name,
 	    bo_exynos->dmabuf,
@@ -1135,7 +1121,7 @@ tbm_exynos_bo_free(tbm_bo bo)
 
 	if (bo_exynos->pBase) {
 		if (munmap(bo_exynos->pBase, bo_exynos->size) == -1) {
-			TBM_EXYNOS_LOG("error bo:%p fail to munmap(%s)\n",
+			TBM_EXYNOS_ERROR("bo:%p fail to munmap(%s)\n",
 				       bo, strerror(errno));
 		}
 	}
@@ -1160,8 +1146,8 @@ tbm_exynos_bo_free(tbm_bo bo)
 			privGem = NULL;
 		}
 	} else {
-		TBM_EXYNOS_LOG("warning Cannot find bo to Hash(%d), ret=%d\n", bo_exynos->name,
-			       ret);
+		TBM_EXYNOS_ERROR("Cannot find bo to Hash(%d), ret=%d\n",
+			bo_exynos->name, ret);
 	}
 
 	_bo_destroy_cache_state(bufmgr_exynos, bo_exynos);
@@ -1172,7 +1158,7 @@ tbm_exynos_bo_free(tbm_bo bo)
 	memset(&arg, 0, sizeof(arg));
 	arg.handle = bo_exynos->gem;
 	if (drmIoctl(bo_exynos->fd, DRM_IOCTL_GEM_CLOSE, &arg)) {
-		TBM_EXYNOS_LOG("error bo:%p fail to gem close.(%s)\n",
+		TBM_EXYNOS_ERROR("bo:%p fail to gem close.(%s)\n",
 			       bo, strerror(errno));
 	}
 
@@ -1202,7 +1188,7 @@ tbm_exynos_bo_import(tbm_bo bo, unsigned int key)
 
 	arg.name = key;
 	if (drmIoctl(bufmgr_exynos->fd, DRM_IOCTL_GEM_OPEN, &arg)) {
-		TBM_EXYNOS_LOG("error Cannot open gem name=%d\n", key);
+		TBM_EXYNOS_ERROR("Cannot open gem name=%d\n", key);
 		return 0;
 	}
 
@@ -1211,13 +1197,13 @@ tbm_exynos_bo_import(tbm_bo bo, unsigned int key)
 				DRM_EXYNOS_GEM_GET,
 				&info,
 				sizeof(struct drm_exynos_gem_info))) {
-		TBM_EXYNOS_LOG("error Cannot get gem info=%d\n", key);
+		TBM_EXYNOS_ERROR("Cannot get gem info=%d\n", key);
 		return 0;
 	}
 
 	bo_exynos = calloc(1, sizeof(struct _tbm_bo_exynos));
 	if (!bo_exynos) {
-		TBM_EXYNOS_LOG("error fail to allocate the bo private\n");
+		TBM_EXYNOS_ERROR("fail to allocate the bo private\n");
 		return 0;
 	}
 
@@ -1229,7 +1215,7 @@ tbm_exynos_bo_import(tbm_bo bo, unsigned int key)
 	bo_exynos->flags_tbm = _get_tbm_flag_from_exynos(bo_exynos->flags_exynos);
 
 	if (!_bo_init_cache_state(bufmgr_exynos, bo_exynos, 1)) {
-		TBM_EXYNOS_LOG("error fail init cache state(%d)\n", bo_exynos->name);
+		TBM_EXYNOS_ERROR("fail init cache state(%d)\n", bo_exynos->name);
 		free(bo_exynos);
 		return 0;
 	}
@@ -1239,7 +1225,7 @@ tbm_exynos_bo_import(tbm_bo bo, unsigned int key)
 
 		arg.handle = bo_exynos->gem;
 		if (drmIoctl(bo_exynos->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg)) {
-			TBM_EXYNOS_LOG("error Cannot dmabuf=%d\n", bo_exynos->gem);
+			TBM_EXYNOS_ERROR("fail to DRM_IOCTL_PRIME_HANDLE_TO_FD gem=%d\n", bo_exynos->gem);
 			free(bo_exynos);
 			return 0;
 		}
@@ -1251,9 +1237,7 @@ tbm_exynos_bo_import(tbm_bo bo, unsigned int key)
 
 	privGem = calloc(1, sizeof(PrivGem));
 	if (!privGem) {
-		TBM_EXYNOS_LOG("[libtbm-exynos:%d] "
-				"error %s:%d Fail to calloc privGem\n",
-				getpid(), __func__, __LINE__);
+		TBM_EXYNOS_ERROR("fail to calloc privGem\n");
 		free(bo_exynos);
 		return 0;
 	}
@@ -1263,11 +1247,10 @@ tbm_exynos_bo_import(tbm_bo bo, unsigned int key)
 
 	if (drmHashInsert(bufmgr_exynos->hashBos, bo_exynos->name,
 			   (void *)privGem) < 0) {
-		TBM_EXYNOS_LOG("error Cannot insert bo to Hash(%d)\n", bo_exynos->name);
+		TBM_EXYNOS_ERROR("Cannot insert bo to Hash(%d)\n", bo_exynos->name);
 	}
 
-	DBG("    [%s] bo:%p, gem:%d(%d), fd:%d, flags:%d(%d), size:%d\n",
-	    target_name(),
+	TBM_EXYNOS_DEBUG("    bo:%p, gem:%d(%d), fd:%d, flags:%d(%d), size:%d\n",
 	    bo,
 	    bo_exynos->gem, bo_exynos->name,
 	    bo_exynos->dmabuf,
@@ -1298,7 +1281,7 @@ tbm_exynos_bo_import_fd(tbm_bo bo, tbm_fd key)
 	arg.fd = key;
 	arg.flags = 0;
 	if (drmIoctl(bufmgr_exynos->fd, DRM_IOCTL_PRIME_FD_TO_HANDLE, &arg)) {
-		TBM_EXYNOS_LOG("error bo:%p Cannot get gem handle from fd:%d (%s)\n",
+		TBM_EXYNOS_ERROR("bo:%p Cannot get gem handle from fd:%d (%s)\n",
 			       bo, arg.fd, strerror(errno));
 		return NULL;
 	}
@@ -1306,7 +1289,7 @@ tbm_exynos_bo_import_fd(tbm_bo bo, tbm_fd key)
 
 	name = _get_name(bufmgr_exynos->fd, gem);
 	if (!name) {
-		TBM_EXYNOS_LOG("error bo:%p Cannot get name from gem:%d, fd:%d (%s)\n",
+		TBM_EXYNOS_ERROR("bo:%p Cannot get name from gem:%d, fd:%d (%s)\n",
 			       bo, gem, key, strerror(errno));
 		return 0;
 	}
@@ -1333,7 +1316,7 @@ tbm_exynos_bo_import_fd(tbm_bo bo, tbm_fd key)
 				DRM_EXYNOS_GEM_GET,
 				&info,
 				sizeof(struct drm_exynos_gem_info))) {
-		TBM_EXYNOS_LOG("error bo:%p Cannot get gem info from gem:%d, fd:%d (%s)\n",
+		TBM_EXYNOS_ERROR("bo:%p Cannot get gem info from gem:%d, fd:%d (%s)\n",
 			       bo, gem, key, strerror(errno));
 		return 0;
 	}
@@ -1343,7 +1326,7 @@ tbm_exynos_bo_import_fd(tbm_bo bo, tbm_fd key)
 
 	bo_exynos = calloc(1, sizeof(struct _tbm_bo_exynos));
 	if (!bo_exynos) {
-		TBM_EXYNOS_LOG("error bo:%p fail to allocate the bo private\n", bo);
+		TBM_EXYNOS_ERROR("bo:%p fail to allocate the bo private\n", bo);
 		return 0;
 	}
 
@@ -1355,7 +1338,7 @@ tbm_exynos_bo_import_fd(tbm_bo bo, tbm_fd key)
 	bo_exynos->name = name;
 
 	if (!_bo_init_cache_state(bufmgr_exynos, bo_exynos, 1)) {
-		TBM_EXYNOS_LOG("error fail init cache state(%d)\n", bo_exynos->name);
+		TBM_EXYNOS_ERROR("fail init cache state(%d)\n", bo_exynos->name);
 		free(bo_exynos);
 		return 0;
 	}
@@ -1365,9 +1348,7 @@ tbm_exynos_bo_import_fd(tbm_bo bo, tbm_fd key)
 
 	privGem = calloc(1, sizeof(PrivGem));
 	if (!privGem) {
-		TBM_EXYNOS_LOG("[libtbm-exynos:%d] "
-			       "error %s:%d Fail to calloc privGem\n",
-			       getpid(), __func__, __LINE__);
+		TBM_EXYNOS_ERROR("fail to calloc privGem\n");
 		free(bo_exynos);
 		return 0;
 	}
@@ -1377,12 +1358,11 @@ tbm_exynos_bo_import_fd(tbm_bo bo, tbm_fd key)
 
 	if (drmHashInsert(bufmgr_exynos->hashBos, bo_exynos->name,
 			   (void *)privGem) < 0) {
-		TBM_EXYNOS_LOG("error bo:%p Cannot insert bo to Hash(%d) from gem:%d, fd:%d\n",
+		TBM_EXYNOS_ERROR("bo:%p Cannot insert bo to Hash(%d) from gem:%d, fd:%d\n",
 			       bo, bo_exynos->name, gem, key);
 	}
 
-	DBG(" [%s] bo:%p, gem:%d(%d), fd:%d, key_fd:%d, flags:%d(%d), size:%d\n",
-	    target_name(),
+	TBM_EXYNOS_DEBUG(" bo:%p, gem:%d(%d), fd:%d, key_fd:%d, flags:%d(%d), size:%d\n",
 	    bo,
 	    bo_exynos->gem, bo_exynos->name,
 	    bo_exynos->dmabuf,
@@ -1406,13 +1386,12 @@ tbm_exynos_bo_export(tbm_bo bo)
 	if (!bo_exynos->name) {
 		bo_exynos->name = _get_name(bo_exynos->fd, bo_exynos->gem);
 		if (!bo_exynos->name) {
-			TBM_EXYNOS_LOG("error Cannot get name\n");
+			TBM_EXYNOS_ERROR("Cannot get name\n");
 			return 0;
 		}
 	}
 
-	DBG("    [%s] bo:%p, gem:%d(%d), fd:%d, flags:%d(%d), size:%d\n",
-	    target_name(),
+	TBM_EXYNOS_DEBUG("    bo:%p, gem:%d(%d), fd:%d, flags:%d(%d), size:%d\n",
 	    bo,
 	    bo_exynos->gem, bo_exynos->name,
 	    bo_exynos->dmabuf,
@@ -1438,13 +1417,12 @@ tbm_exynos_bo_export_fd(tbm_bo bo)
 	arg.handle = bo_exynos->gem;
 	ret = drmIoctl(bo_exynos->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg);
 	if (ret) {
-		TBM_EXYNOS_LOG("error bo:%p Cannot dmabuf=%d (%s)\n",
+		TBM_EXYNOS_ERROR("bo:%p Cannot dmabuf=%d (%s)\n",
 			       bo, bo_exynos->gem, strerror(errno));
 		return (tbm_fd) ret;
 	}
 
-	DBG(" [%s] bo:%p, gem:%d(%d), fd:%d, key_fd:%d, flags:%d(%d), size:%d\n",
-	    target_name(),
+	TBM_EXYNOS_DEBUG(" bo:%p, gem:%d(%d), fd:%d, key_fd:%d, flags:%d(%d), size:%d\n",
 	    bo,
 	    bo_exynos->gem, bo_exynos->name,
 	    bo_exynos->dmabuf,
@@ -1467,12 +1445,11 @@ tbm_exynos_bo_get_handle(tbm_bo bo, int device)
 	EXYNOS_RETURN_VAL_IF_FAIL(bo_exynos != NULL, (tbm_bo_handle) NULL);
 
 	if (!bo_exynos->gem) {
-		TBM_EXYNOS_LOG("error Cannot map gem=%d\n", bo_exynos->gem);
+		TBM_EXYNOS_ERROR("Cannot map gem=%d\n", bo_exynos->gem);
 		return (tbm_bo_handle) NULL;
 	}
 
-	DBG("[%s] bo:%p, gem:%d(%d), fd:%d, flags:%d(%d), size:%d, %s\n",
-	    target_name(),
+	TBM_EXYNOS_DEBUG("bo:%p, gem:%d(%d), fd:%d, flags:%d(%d), size:%d, %s\n",
 	    bo,
 	    bo_exynos->gem, bo_exynos->name,
 	    bo_exynos->dmabuf,
@@ -1483,8 +1460,8 @@ tbm_exynos_bo_get_handle(tbm_bo bo, int device)
 	/*Get mapped bo_handle*/
 	bo_handle = _exynos_bo_handle(bo_exynos, device);
 	if (bo_handle.ptr == NULL) {
-		TBM_EXYNOS_LOG("error Cannot get handle: gem:%d, device:%d\n", bo_exynos->gem,
-			       device);
+		TBM_EXYNOS_ERROR("Cannot get handle: gem:%d, device:%d\n",
+			bo_exynos->gem, device);
 		return (tbm_bo_handle) NULL;
 	}
 
@@ -1507,11 +1484,11 @@ tbm_exynos_bo_map(tbm_bo bo, int device, int opt)
 	EXYNOS_RETURN_VAL_IF_FAIL(bo_exynos != NULL, (tbm_bo_handle) NULL);
 
 	if (!bo_exynos->gem) {
-		TBM_EXYNOS_LOG("error Cannot map gem=%d\n", bo_exynos->gem);
+		TBM_EXYNOS_ERROR("Cannot map gem=%d\n", bo_exynos->gem);
 		return (tbm_bo_handle) NULL;
 	}
 
-	DBG("       [%s] bo:%p, gem:%d(%d), fd:%d, %s, %s\n", target_name(),
+	TBM_EXYNOS_DEBUG("       bo:%p, gem:%d(%d), fd:%d, %s, %s\n",
 	    bo,
 	    bo_exynos->gem, bo_exynos->name,
 	    bo_exynos->dmabuf,
@@ -1521,7 +1498,7 @@ tbm_exynos_bo_map(tbm_bo bo, int device, int opt)
 	/*Get mapped bo_handle*/
 	bo_handle = _exynos_bo_handle(bo_exynos, device);
 	if (bo_handle.ptr == NULL) {
-		TBM_EXYNOS_LOG("error Cannot get handle: gem:%d, device:%d, opt:%d\n",
+		TBM_EXYNOS_ERROR("Cannot get handle: gem:%d, device:%d, opt:%d\n",
 			       bo_exynos->gem, device, opt);
 		return (tbm_bo_handle) NULL;
 	}
@@ -1566,7 +1543,7 @@ tbm_exynos_bo_unmap(tbm_bo bo)
 
 	bo_exynos->last_map_device = -1;
 
-	DBG("     [%s] bo:%p, gem:%d(%d), fd:%d\n", target_name(),
+	TBM_EXYNOS_DEBUG("     bo:%p, gem:%d(%d), fd:%d\n",
 	    bo,
 	    bo_exynos->gem, bo_exynos->name,
 	    bo_exynos->dmabuf);
@@ -1587,8 +1564,7 @@ tbm_exynos_bo_lock(tbm_bo bo, int device, int opt)
 	int ret = 0;
 
 	if (device != TBM_DEVICE_3D && device != TBM_DEVICE_CPU) {
-		DBG("[libtbm-exynos:%d] %s not support device type,\n", getpid(),
-		    __func__);
+		TBM_EXYNOS_DEBUG("Not support device type,\n");
 		return 0;
 	}
 
@@ -1608,13 +1584,13 @@ tbm_exynos_bo_lock(tbm_bo bo, int device, int opt)
 		if (device == TBM_DEVICE_3D)
 			fence.type = DMA_BUF_ACCESS_READ | DMA_BUF_ACCESS_DMA;
 	} else {
-		TBM_EXYNOS_LOG("error Invalid argument\n");
+		TBM_EXYNOS_ERROR("Invalid argument\n");
 		return 0;
 	}
 
 	/* Check if the tbm manager supports dma fence or not. */
 	if (!bufmgr_exynos->use_dma_fence) {
-		TBM_EXYNOS_LOG("error Not support DMA FENCE(%s)\n", strerror(errno));
+		TBM_EXYNOS_ERROR("Not support DMA FENCE(%s)\n", strerror(errno));
 		return 0;
 
 	}
@@ -1622,7 +1598,7 @@ tbm_exynos_bo_lock(tbm_bo bo, int device, int opt)
 	if (device == TBM_DEVICE_3D) {
 		ret = ioctl(bo_exynos->dmabuf, DMABUF_IOCTL_GET_FENCE, &fence);
 		if (ret < 0) {
-			TBM_EXYNOS_LOG("error Cannot set GET FENCE(%s)\n", strerror(errno));
+			TBM_EXYNOS_ERROR("Cannot set GET FENCE(%s)\n", strerror(errno));
 			return 0;
 		}
 	} else {
@@ -1654,13 +1630,13 @@ tbm_exynos_bo_lock(tbm_bo bo, int device, int opt)
 
 		if (i == DMA_FENCE_LIST_MAX) {
 			/*TODO: if dma_fence list is full, it needs realloc. I will fix this. by minseok3.kim*/
-			TBM_EXYNOS_LOG("error fence list is full\n");
+			TBM_EXYNOS_ERROR("fence list is full\n");
 		}
 	}
 
 	pthread_mutex_unlock(&bo_exynos->mutex);
 
-	DBG("[%s] DMABUF_IOCTL_GET_FENCE! bo:%p, gem:%d(%d), fd:%ds\n", target_name(),
+	TBM_EXYNOS_DEBUG("DMABUF_IOCTL_GET_FENCE! bo:%p, gem:%d(%d), fd:%ds\n",
 	    bo,
 	    bo_exynos->gem, bo_exynos->name,
 	    bo_exynos->dmabuf);
@@ -1688,14 +1664,12 @@ tbm_exynos_bo_unlock(tbm_bo bo)
 		dma_type = 1;
 
 	if (!bo_exynos->dma_fence[0].ctx && dma_type) {
-		DBG("[libtbm-exynos:%d] %s FENCE not support or ignored,\n", getpid(),
-		    __func__);
+		TBM_EXYNOS_DEBUG("FENCE not support or ignored,\n");
 		return 0;
 	}
 
 	if (!bo_exynos->dma_fence[0].ctx && dma_type) {
-		DBG("[libtbm-exynos:%d] %s device type is not 3D/CPU,\n", getpid(),
-		    __func__);
+		TBM_EXYNOS_DEBUG("device type is not 3D/CPU,\n");
 		return 0;
 	}
 
@@ -1718,7 +1692,7 @@ tbm_exynos_bo_unlock(tbm_bo bo)
 	if (dma_type) {
 		ret = ioctl(bo_exynos->dmabuf, DMABUF_IOCTL_PUT_FENCE, &fence);
 		if (ret < 0) {
-			TBM_EXYNOS_LOG("error Can not set PUT FENCE(%s)\n", strerror(errno));
+			TBM_EXYNOS_ERROR("Can not set PUT FENCE(%s)\n", strerror(errno));
 			return 0;
 		}
 	} else {
@@ -1731,7 +1705,7 @@ tbm_exynos_bo_unlock(tbm_bo bo)
 			return 0;
 	}
 
-	DBG("[%s] DMABUF_IOCTL_PUT_FENCE! bo:%p, gem:%d(%d), fd:%ds\n", target_name(),
+	TBM_EXYNOS_DEBUG("DMABUF_IOCTL_PUT_FENCE! bo:%p, gem:%d(%d), fd:%ds\n",
 	    bo,
 	    bo_exynos->gem, bo_exynos->name,
 	    bo_exynos->dmabuf);
@@ -1795,7 +1769,7 @@ tbm_exynos_surface_supported_format(uint32_t **formats, uint32_t *num)
 	*formats = color_formats;
 	*num = TBM_COLOR_FORMAT_COUNT;
 
-	fprintf(stderr, "tbm_exynos_surface_supported_format  count = %d\n", *num);
+	TBM_EXYNOS_DEBUG("tbm_exynos_surface_supported_format  count = %d\n", *num);
 
 	return 1;
 }
@@ -2167,7 +2141,7 @@ tbm_exynos_bufmgr_bind_native_display(tbm_bufmgr bufmgr, void *native_display)
 
 	if (!tbm_drm_helper_wl_auth_server_init(native_display, bufmgr_exynos->fd,
 					   bufmgr_exynos->device_name, 0)) {
-		TBM_EXYNOS_LOG("[libtbm-exynos:%d] error:Fail to tbm_drm_helper_wl_server_init\n");
+		TBM_EXYNOS_ERROR("fail to tbm_drm_helper_wl_server_init\n");
 		return 0;
 	}
 
@@ -2198,7 +2172,7 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 
 	bufmgr_exynos = calloc(1, sizeof(struct _tbm_bufmgr_exynos));
 	if (!bufmgr_exynos) {
-		TBM_EXYNOS_LOG("error: Fail to alloc bufmgr_exynos!\n");
+		TBM_EXYNOS_ERROR("fail to alloc bufmgr_exynos!\n");
 		return 0;
 	}
 
@@ -2207,7 +2181,7 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 		if (bufmgr_exynos->fd < 0) {
 			bufmgr_exynos->fd = _tbm_exynos_open_drm();
 			if (bufmgr_exynos->fd < 0) {
-				TBM_EXYNOS_LOG("[libtbm-exynos:%d] error: Fail to open drm!\n", getpid());
+				TBM_EXYNOS_ERROR("fail to open drm!\n", getpid());
 				goto fail_open_drm;
 			}
 		}
@@ -2216,7 +2190,7 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 
 		bufmgr_exynos->device_name = drmGetDeviceNameFromFd(bufmgr_exynos->fd);
 		if (!bufmgr_exynos->device_name) {
-			TBM_EXYNOS_LOG("[libtbm-exynos:%d] error: Fail to get device name!\n", getpid());
+			TBM_EXYNOS_ERROR("fail to get device name!\n", getpid());
 
 			tbm_drm_helper_unset_tbm_master_fd();
 			goto fail_get_device_name;
@@ -2225,13 +2199,13 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 		if (_check_render_node()) {
 			bufmgr_exynos->fd = _get_render_node();
 			if (bufmgr_exynos->fd < 0) {
-				TBM_EXYNOS_LOG("[%s] get render node failed\n", target_name(), fd);
+				TBM_EXYNOS_ERROR("fail to get render node\n");
 				goto fail_get_render_node;
 			}
-			DBG("[%s] Use render node:%d\n", target_name(), bufmgr_exynos->fd);
+			TBM_EXYNOS_DEBUG("Use render node:%d\n", bufmgr_exynos->fd);
 		} else {
 			if (!tbm_drm_helper_get_auth_info(&(bufmgr_exynos->fd), &(bufmgr_exynos->device_name), NULL)) {
-				TBM_EXYNOS_LOG("[libtbm-exynos:%d] error: Fail to get auth drm info!\n", getpid());
+				TBM_EXYNOS_ERROR("fail to get auth drm info!\n");
 				goto fail_get_auth_info;
 			}
 		}
@@ -2250,7 +2224,7 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	}
 
 	if (!_bufmgr_init_cache_state(bufmgr_exynos)) {
-		TBM_EXYNOS_LOG("[libtbm-exynos:%d] error: Fail to init bufmgr cache state\n", getpid());
+		TBM_EXYNOS_ERROR("fail to init bufmgr cache state\n");
 		goto fail_init_cache_state;
 	}
 
@@ -2259,7 +2233,7 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 
 	bufmgr_backend = tbm_backend_alloc();
 	if (!bufmgr_backend) {
-		TBM_EXYNOS_LOG("error: Fail to alloc backend!\n");
+		TBM_EXYNOS_ERROR("fail to alloc backend!\n");
 		goto fail_alloc_backend;
 	}
 
@@ -2285,7 +2259,7 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 		bufmgr_backend->bufmgr_bind_native_display = tbm_exynos_bufmgr_bind_native_display;
 
 	if (!tbm_backend_init(bufmgr, bufmgr_backend)) {
-		TBM_EXYNOS_LOG("error: Fail to init backend!\n");
+		TBM_EXYNOS_ERROR("fail to init backend!\n");
 		goto fail_init_backend;
 	}
 
@@ -2296,13 +2270,13 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 		env = getenv("TBM_EXYNOS_DEBUG");
 		if (env) {
 			bDebug = atoi(env);
-			TBM_EXYNOS_LOG("TBM_EXYNOS_DEBUG=%s\n", env);
+			TBM_EXYNOS_ERROR("TBM_EXYNOS_DEBUG=%s\n", env);
 		} else
 			bDebug = 0;
 	}
 #endif
 
-	DBG("[%s] drm_fd:%d\n", target_name(), bufmgr_exynos->fd);
+	TBM_EXYNOS_DEBUG("drm_fd:%d\n", bufmgr_exynos->fd);
 
 	return 1;
 
