@@ -348,7 +348,7 @@ _tgl_lock(int fd, unsigned int key, int opt)
 	data.key = key;
 	data.type = tgl_type;
 
-	err = ioctl(fd, TGL_IOCTL_LOCK, data);
+	err = ioctl(fd, TGL_IOCTL_LOCK, &data);
 	if (err) {
 		TBM_EXYNOS_ERROR("error(%s) key:%d opt:%d\n",
 			strerror(errno), key, opt);
@@ -367,7 +367,7 @@ _tgl_unlock(int fd, unsigned int key)
 	data.key = key;
 	data.type = TGL_TYPE_NONE;
 
-	err = ioctl(fd, TGL_IOCTL_UNLOCK, data);
+	err = ioctl(fd, TGL_IOCTL_UNLOCK, &data);
 	if (err) {
 		TBM_EXYNOS_ERROR("error(%s) key:%d\n",
 			strerror(errno), key);
